@@ -55,6 +55,8 @@ interface Branch {
 }
 
 const Branches = () => {
+  const API_BASE_URL = (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) ||
+    `${window.location.protocol}//${window.location.hostname}:8000`;
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -81,7 +83,7 @@ const Branches = () => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8000/api/v1/branches', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/branches`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -215,9 +217,9 @@ const Branches = () => {
         }
       });
 
-      const url = editingBranch 
-        ? `http://localhost:8000/api/v1/branches/${editingBranch._id}`
-        : 'http://localhost:8000/api/v1/branches';
+      const url = editingBranch
+        ? `${API_BASE_URL}/api/v1/branches/${editingBranch._id}`
+        : `${API_BASE_URL}/api/v1/branches`;
       
       const method = editingBranch ? 'PUT' : 'POST';
 
@@ -282,7 +284,7 @@ const Branches = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8000/api/v1/branches/${branchId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/branches/${branchId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -315,7 +317,7 @@ const Branches = () => {
   const handleToggleStatus = async (branchId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8000/api/v1/branches/${branchId}/toggle-status`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/branches/${branchId}/toggle-status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,

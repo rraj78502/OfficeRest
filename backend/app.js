@@ -4,11 +4,17 @@ const cors = require('cors');
 
 const app = express();
 
-// Define allowed origins with fallback
-const allowedOrigins = [
+// Define allowed origins with fallback and optional comma-separated list in CORS_ORIGINS
+const extraOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+const allowedOrigins = Array.from(new Set([
   process.env.CORS_ORIGIN || 'http://localhost:3000',
   process.env.USER_CORS_ORIGIN || 'http://localhost:5173',
-].filter(Boolean);
+  ...extraOrigins,
+].filter(Boolean)));
+console.log('Allowed CORS origins:', allowedOrigins);
 
 // Configure CORS
 app.use(
