@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Header>
+    <AuthHeader xmlns="NepalTelecom.AuthGateway">
+      <Username>sdu</Username>
+      <Password>sdu321*</Password>
+    </AuthHeader>
+  </soap:Header>
+  <soap:Body>
+    <ValidateOTP xmlns="NepalTelecom.AuthGateway">
+      <MDN>9851347856</MDN>
+      <BusiCode>787878</BusiCode>
+      <OTP>407517</OTP>
+      <TrId>e4694205-1740-473e-bece-8ffe471a0b22</TrId>
+    </ValidateOTP>
+  </soap:Body>
+</soap:Envelope>
