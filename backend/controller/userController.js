@@ -611,25 +611,48 @@ module.exports = {
         .json(new ApiResponse(200, {}, "If the account exists, an OTP has been sent"));
     }
 
-    if (!user.mobileNumber) {
-      throw new ApiError(400, "No mobile number on file for this account");
+    const enableEmailFallback = process.env.ENABLE_SMS_FALLBACK_TO_EMAIL === 'true' || (process.env.NODE_ENV !== 'production');
+
+    // Prefer SMS in production when mobile is available; allow email fallback in dev or when enabled
+    if (user.mobileNumber) {
+      try {
+        const { token, message } = await sendOTPController({
+          identifier: user.mobileNumber,
+          deliveryMethod: "sms",
+        });
+  
+        return res.status(200).json(
+          new ApiResponse(200, { token, deliveryMethod: "sms" }, message || "OTP sent via SMS")
+        );
+      } catch (error) {
+        if (enableEmailFallback && user.email) {
+          // Fallback to email OTP
+          const { token, message } = await sendOTPController({
+            identifier: user.email,
+            deliveryMethod: "email",
+          });
+          return res.status(200).json(
+            new ApiResponse(200, { token, deliveryMethod: "email" }, message || "OTP sent via Email")
+          );
+        }
+        const msg = error?.message || "Unable to send OTP via SMS";
+        throw new ApiError(503, msg);
+      }
     }
 
-    // Always use SMS for password reset
-    try {
+    // If no mobile number, use email when allowed
+    if (enableEmailFallback && user.email) {
       const { token, message } = await sendOTPController({
-        identifier: user.mobileNumber,
-        deliveryMethod: "sms",
+        identifier: user.email,
+        deliveryMethod: "email",
       });
-
       return res.status(200).json(
-        new ApiResponse(200, { token, deliveryMethod: "sms" }, message || "OTP sent via SMS")
+        new ApiResponse(200, { token, deliveryMethod: "email" }, message || "OTP sent via Email")
       );
-    } catch (error) {
-      // Normalize SOAP/network failures into a user-friendly 400
-      const msg = error?.message || "Unable to send OTP via SMS";
-      throw new ApiError(error?.statusCode === 400 ? 400 : 400, msg);
     }
+
+    // Otherwise, fail clearly
+    throw new ApiError(400, "No mobile number on file for this account");
   }),
 
   verifyPasswordResetOTP: asyncHandler(async (req, res) => {

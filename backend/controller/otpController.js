@@ -1,11 +1,10 @@
 const OTP = require('../model/otpModel');
 const ApiError = require('../utils/ApiError');
-const asyncHandler = require('../utils/asyncHandler');
 const { requestOtp, confirmOtp } = require('../utils/soapOtpVPN');
 const generateOTP = require('../utils/generateOTP');
 const sendEmail = require('../utils/sendEmail');
 
-const sendOTPController = asyncHandler(async ({ identifier, deliveryMethod }) => {
+const sendOTPController = async ({ identifier, deliveryMethod }) => {
   console.log("sendOTPController input:", { identifier, deliveryMethod });
 
   if (!identifier || !deliveryMethod) {
@@ -18,7 +17,11 @@ const sendOTPController = asyncHandler(async ({ identifier, deliveryMethod }) =>
   // Delete previous OTPs/tokens for this identifier
   const query =
     deliveryMethod === 'sms' ? { mobileNumber: identifier } : { email: identifier };
-  await OTP.deleteMany(query);
+  try {
+    await OTP.deleteMany(query);
+  } catch (error) {
+    console.warn('Failed to delete previous OTPs:', error.message);
+  }
 
   let token;
   let message;
@@ -52,13 +55,18 @@ const sendOTPController = asyncHandler(async ({ identifier, deliveryMethod }) =>
 
   // Store OTP/token in MongoDB
   console.log("Storing OTP record:", { identifier, token, deliveryMethod });
-  const otpRecord = await OTP.create({
-    [deliveryMethod === 'sms' ? 'mobileNumber' : 'email']: identifier,
-    token,
-    deliveryMethod,
-    expiry: new Date(Date.now() + 5 * 60 * 1000), // Explicit 5-minute expiry
-  });
-  console.log("OTP record stored:", otpRecord);
+  try {
+    const otpRecord = await OTP.create({
+      [deliveryMethod === 'sms' ? 'mobileNumber' : 'email']: identifier,
+      token,
+      deliveryMethod,
+      expiry: new Date(Date.now() + 5 * 60 * 1000), // Explicit 5-minute expiry
+    });
+    console.log("OTP record stored:", otpRecord);
+  } catch (error) {
+    console.error("Failed to store OTP record:", error.message);
+    throw new ApiError(500, 'Failed to store OTP record');
+  }
 
   return {
     token,
@@ -66,10 +74,10 @@ const sendOTPController = asyncHandler(async ({ identifier, deliveryMethod }) =>
     deliveryMethod,
     message,
   };
-});
+};
 
 
-const verifyOTPController = asyncHandler(async ({ token, otp, deliveryMethod }) => {
+const verifyOTPController = async ({ token, otp, deliveryMethod }) => {
   console.log("verifyOTPController input:", { token, otp, deliveryMethod });
 
   if (!token || !otp || !deliveryMethod) {
@@ -121,6 +129,6 @@ const verifyOTPController = asyncHandler(async ({ token, otp, deliveryMethod }) 
     deliveryMethod,
     message,
   };
-});
+};
 
 module.exports = { sendOTPController, verifyOTPController };

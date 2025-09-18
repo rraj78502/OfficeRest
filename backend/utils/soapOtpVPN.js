@@ -13,23 +13,18 @@ const {
   OTP_TOKEN_EXPIRY,
 } = process.env;
 
-// Use axios with VPN interface binding for HTTP requests
-const VPN_INTERFACE_IP = '172.16.49.163';
-
-// Create axios instance that uses VPN interface
+// Create axios instance for NTC API requests
 const vpnAxios = axios.create({
   timeout: 30000,
   headers: {
-    'User-Agent': 'Node-SOAP-Client-VPN/1.0',
+    'User-Agent': 'Node-SOAP-Client/1.0',
   },
-  // Use localAddress to bind to specific interface
-  httpAgent: require('http').Agent({ 
-    localAddress: VPN_INTERFACE_IP,
-    timeout: 30000 
+  // Remove localAddress binding for Docker compatibility
+  httpAgent: require('http').Agent({
+    timeout: 30000
   }),
-  httpsAgent: require('https').Agent({ 
-    localAddress: VPN_INTERFACE_IP,
-    timeout: 30000 
+  httpsAgent: require('https').Agent({
+    timeout: 30000
   }),
 });
 
@@ -83,12 +78,12 @@ async function requestOtp(mdn) {
       throw new ApiError(400, 'Mobile number is required');
     }
 
-    console.log(`Requesting OTP for ${mdn} via VPN interface ${VPN_INTERFACE_IP}`);
+    console.log(`Requesting OTP for ${mdn} via NTC service`);
     
     // Test connectivity first
     const isConnected = await testVpnConnectivity();
     if (!isConnected) {
-      throw new ApiError(503, 'Cannot connect to NTC service via VPN');
+      throw new ApiError(503, 'Cannot connect to NTC service');
     }
 
     const soapBody = `<GenerateAuthPassword xmlns="NepalTelecom.AuthGateway">
@@ -130,7 +125,7 @@ async function requestOtp(mdn) {
     console.error('NTC OTP Request Error:', error);
     throw error instanceof ApiError
       ? error
-      : new ApiError(500, 'Internal error while sending OTP via VPN');
+      : new ApiError(500, 'Internal error while sending OTP');
   }
 }
 
@@ -146,7 +141,7 @@ async function confirmOtp(token, otp) {
     // Test connectivity first
     const isConnected = await testVpnConnectivity();
     if (!isConnected) {
-      throw new ApiError(503, 'Cannot connect to NTC service via VPN');
+      throw new ApiError(503, 'Cannot connect to NTC service');
     }
 
     const soapBody = `<ValidateOTP xmlns="NepalTelecom.AuthGateway">
