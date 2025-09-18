@@ -1,0 +1,57 @@
+services:
+  mongo:
+    image: mongo:6
+    container_name: office_rest_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: office_rest_backend
+    network_mode: "host"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Use localhost instead of container name for host network
+      - MONGO_URI=mongodb://localhost:27017/REST
+      - PORT=8000
+      # CORS: allow both frontends served by compose
+      - CORS_ORIGIN=http://localhost:8081
+      - USER_CORS_ORIGIN=http://localhost:8080
+      # Optional: additional comma-separated origins
+      # - CORS_ORIGINS=
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  frontend-user:
+    build:
+      context: ./frontend/user
+      dockerfile: Dockerfile
+    container_name: office_rest_frontend_user
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend-admin:
+    build:
+      context: ./frontend/admin
+      dockerfile: Dockerfile
+    container_name: office_rest_frontend_admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+    driver: local
+
