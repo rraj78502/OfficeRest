@@ -23,6 +23,8 @@ services:
       # CORS: allow both frontends served by compose
       - CORS_ORIGIN=http://localhost:8081
       - USER_CORS_ORIGIN=http://localhost:8080
+      # Allow requests from the server's public IP for both frontends
+      - CORS_ORIGINS=http://10.26.192.124:8081,http://10.26.192.124:8080
       # Optional: additional comma-separated origins
       # - CORS_ORIGINS=
     depends_on:
@@ -54,4 +56,3 @@ services:
 volumes:
   mongo_data:
     driver: local
-
