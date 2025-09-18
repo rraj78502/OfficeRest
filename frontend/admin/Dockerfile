@@ -1,6 +1,9 @@
 # Stage 1: Build the frontend app
 FROM node:18 AS builder
 
+# Accept build argument for API URL
+ARG VITE_API_URL=http://localhost:8000
+
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -10,7 +13,10 @@ RUN npm install
 # Copy all source files
 COPY . .
 
-# Build for production (picks up .env.production automatically)
+# Create .env file with the build argument
+RUN echo "VITE_API_URL=${VITE_API_URL}" > .env
+
+# Build for production
 RUN npm run build
 
 # Stage 2: Serve with Nginx

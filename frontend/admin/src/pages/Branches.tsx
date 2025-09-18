@@ -55,8 +55,7 @@ interface Branch {
 }
 
 const Branches = () => {
-  const API_BASE_URL = (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) ||
-    `${window.location.protocol}//${window.location.hostname}:8000`;
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
