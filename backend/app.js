@@ -4,16 +4,33 @@ const cors = require('cors');
 
 const app = express();
 
-// Define allowed origins with fallback and optional comma-separated list in CORS_ORIGINS
-const extraOrigins = (process.env.CORS_ORIGINS || '')
+// Collect allowed origins, supporting comma-separated values in multiple env vars
+const parseOrigins = value => (value || '')
   .split(',')
-  .map(o => o.trim())
+  .map(origin => origin.trim())
   .filter(Boolean);
+
+const defaultOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081'];
 const allowedOrigins = Array.from(new Set([
-  process.env.CORS_ORIGIN || 'http://localhost:3000',
-  process.env.USER_CORS_ORIGIN || 'http://localhost:5173',
-  ...extraOrigins,
+  ...parseOrigins(process.env.CORS_ORIGIN),
+  ...parseOrigins(process.env.USER_CORS_ORIGIN),
+  ...parseOrigins(process.env.CORS_ORIGINS),
+  // Fall back to local defaults when no explicit origin is provided
+  ...(!process.env.CORS_ORIGIN && !process.env.USER_CORS_ORIGIN ? defaultOrigins : []),
 ].filter(Boolean)));
+
+if (!allowedOrigins.length) {
+  allowedOrigins.push(...defaultOrigins);
+}
+
+const isTrustedLocalhost = origin => {
+  try {
+    const { hostname } = new URL(origin);
+    return ['localhost', '127.0.0.1'].includes(hostname);
+  } catch (err) {
+    return false;
+  }
+};
 console.log('Allowed CORS origins:', allowedOrigins);
 
 // Configure CORS
@@ -24,7 +41,7 @@ app.use(
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
       
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin) || isTrustedLocalhost(origin)) {
         return callback(null, true);
       }
       console.error(`CORS error: Origin ${origin} not allowed`);

@@ -22,10 +22,10 @@ services:
       - MONGO_URI=mongodb://mongo:27017/REST
       - PORT=8000
       # CORS: allow both frontends served by compose
-      - CORS_ORIGIN=http://localhost:8081,http://172.16.49.163:8081,http://10.26.192.124:8081
-      - USER_CORS_ORIGIN=http://localhost:8080,http://172.16.49.163:8080,http://10.26.192.124:8080
+      - CORS_ORIGIN=http://localhost:8081,http://172.16.49.163:8081,http://10.26.192.124:8081,https://rest.ntc.net.np
+      - USER_CORS_ORIGIN=http://localhost:8080,http://172.16.49.163:8080,http://10.26.192.124:8080,https://rest.ntc.net.np
       # Allow requests from the server's public IP for both frontends
-      - CORS_ORIGINS=http://172.16.49.163:8081,http://172.16.49.163:8080,http://10.26.192.124:8081,http://10.26.192.124:8080
+      - CORS_ORIGINS=http://172.16.49.163:8081,http://172.16.49.163:8080,http://10.26.192.124:8081,http://10.26.192.124:8080,https://rest.ntc.net.np
       # Optional: additional comma-separated origins
       # - CORS_ORIGINS=
     depends_on:
@@ -37,7 +37,7 @@ services:
       context: ./frontend/user
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${BACKEND_HOST:-http://localhost:8000}
+        - VITE_API_URL=${BACKEND_HOST:-https://rest.ntc.net.np}
     container_name: office_rest_frontend_user
     ports:
       - "8080:80"
@@ -50,7 +50,7 @@ services:
       context: ./frontend/admin
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${BACKEND_HOST:-http://localhost:8000}
+        - VITE_API_URL=${BACKEND_HOST:-https://rest.ntc.net.np}
     container_name: office_rest_frontend_admin
     ports:
       - "8081:80"
