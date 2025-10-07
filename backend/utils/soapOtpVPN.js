@@ -13,6 +13,18 @@ const {
   OTP_TOKEN_EXPIRY,
 } = process.env;
 
+const wsdlUrl = NTC_WSDL_URL || 'http://192.168.200.85/Authuser.asmx?wsdl';
+const soapEndpoint = (() => {
+  try {
+    const parsed = new URL(wsdlUrl);
+    parsed.search = '';
+    return parsed.toString();
+  } catch (error) {
+    console.error('Invalid NTC_WSDL_URL, falling back to default endpoint:', wsdlUrl, error.message);
+    return 'http://192.168.200.85/Authuser.asmx';
+  }
+})();
+
 // Create axios instance for NTC API requests
 const vpnAxios = axios.create({
   timeout: 30000,
@@ -31,7 +43,7 @@ const vpnAxios = axios.create({
 // Test VPN connectivity first
 async function testVpnConnectivity() {
   try {
-    const response = await vpnAxios.get(NTC_WSDL_URL, { timeout: 10000 });
+    const response = await vpnAxios.get(wsdlUrl, { timeout: 10000 });
     console.log(`✓ VPN connectivity test passed - Status: ${response.status}`);
     return true;
   } catch (error) {
@@ -58,7 +70,7 @@ async function createSOAPRequest(action, soapBody) {
 </soap:Envelope>`;
 
   try {
-    const response = await vpnAxios.post('http://192.168.200.85/Authuser.asmx', soapEnvelope, {
+    const response = await vpnAxios.post(soapEndpoint, soapEnvelope, {
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
         'SOAPAction': `"NepalTelecom.AuthGateway/${action}"`,
