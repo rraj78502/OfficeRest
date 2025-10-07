@@ -13,8 +13,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: office_rest_backend
-    # Share the host network so the backend can reach private VPN resources
-    network_mode: host
+    ports:
+      - "8000:8000"
     env_file:
       - ./backend/.env
     environment:
@@ -31,8 +31,6 @@ services:
     depends_on:
       - mongo
     restart: unless-stopped
-    extra_hosts:
-      - "mongo:127.0.0.1"
 
   frontend-user:
     build:
