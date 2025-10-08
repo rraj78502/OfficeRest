@@ -58,6 +58,19 @@ services:
       - backend
     restart: unless-stopped
 
+  mongo-express:
+    image: mongo-express:1
+    container_name: office_rest_mongo_express
+    ports:
+      - "8082:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/REST
+      - ME_CONFIG_BASICAUTH_USERNAME=${ME_UI_USER:-admin}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${ME_UI_PASS:-changeme}
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
 volumes:
   mongo_data:
     driver: local
