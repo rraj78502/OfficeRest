@@ -45,7 +45,8 @@ const committeeMemberSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null, // Optional: Link to a user if the member is a registered user
+      required: [true, "Linked member is required"],
+      index: true,
     },
   },
   { timestamps: true }

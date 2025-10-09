@@ -84,6 +84,11 @@ const branchSchema = new mongoose.Schema(
     ],
     teamMembers: [
       {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: [true, "Team member must reference a registered user"],
+        },
         name: {
           type: String,
           required: [true, "Team member name is required"],

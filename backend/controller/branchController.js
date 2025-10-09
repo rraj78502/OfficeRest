@@ -4,6 +4,108 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
+const User = require("../model/userModel");
+
+const buildMemberDisplayName = (userDoc, fallback) => {
+  const parts = [userDoc?.username, userDoc?.surname].filter(Boolean);
+  const joined = parts.join(" ").trim();
+  return joined || fallback || userDoc?.email || "";
+};
+
+const isManagedTeamProfile = (url) =>
+  typeof url === "string" && (url.includes("Team%20Member%20Profiles") || url.includes("Team Member Profiles"));
+
+const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) => {
+  if (!teamMembers) {
+    return [];
+  }
+  if (!Array.isArray(teamMembers)) {
+    throw new ApiError(400, "Invalid teamMembers format");
+  }
+
+  const existingById = existingMembers.reduce((acc, member) => {
+    if (member && member._id) {
+      acc[member._id.toString()] = member;
+    }
+    return acc;
+  }, {});
+
+  return Promise.all(
+    teamMembers.map(async (member, index) => {
+      if (!member || !member.userId) {
+        throw new ApiError(400, `Team member at position ${index + 1} must include userId`);
+      }
+
+      const linkedUser = await User.findById(member.userId).select(
+        "username surname email profilePic membershipStatus"
+      );
+      if (!linkedUser) {
+        throw new ApiError(404, `Linked member not found for team member at position ${index + 1}`);
+      }
+      if (linkedUser.membershipStatus !== "approved") {
+        throw new ApiError(400, "Team member must be an approved member");
+      }
+
+      const normalizedPosition = typeof member.position === "string" ? member.position.trim() : "";
+      if (!normalizedPosition) {
+        throw new ApiError(400, `Position is required for team member at position ${index + 1}`);
+      }
+
+      const normalizedName = typeof member.name === "string" && member.name.trim()
+        ? member.name.trim()
+        : buildMemberDisplayName(linkedUser);
+      if (!normalizedName) {
+        throw new ApiError(400, `Display name could not be resolved for team member at position ${index + 1}`);
+      }
+
+      const normalizedExperience = typeof member.experience === "string" ? member.experience.trim() : "";
+
+      const existing = member._id && existingById[member._id] ? existingById[member._id] : null;
+      let profilePicUrl =
+        (typeof member.profilePic === "string" && member.profilePic.trim()) ||
+        (existing && existing.profilePic) ||
+        linkedUser.profilePic ||
+        "";
+
+      if (files && files[`teamMember_${index}_profilePic`]) {
+        try {
+          if (existing?.profilePic && isManagedTeamProfile(existing.profilePic)) {
+            const publicId = existing.profilePic.split("/").pop().split(".")[0];
+            await cloudinary.uploader.destroy(`Team Member Profiles/${publicId}`);
+          }
+        } catch (error) {
+          console.error(`Failed to delete previous team member (${index}) profile pic:`, error.message);
+        }
+
+        try {
+          const uploadResult = await uploadOnCloudinary(
+            files[`teamMember_${index}_profilePic`][0].path,
+            "Team Member Profiles"
+          );
+          if (uploadResult?.secure_url) {
+            profilePicUrl = uploadResult.secure_url;
+          }
+        } catch (error) {
+          console.error(`Team member ${index} profile pic upload failed:`, error);
+        }
+      }
+
+      const normalizedMember = {
+        userId: linkedUser._id,
+        name: normalizedName,
+        position: normalizedPosition,
+        experience: normalizedExperience,
+        profilePic: profilePicUrl,
+      };
+
+      if (member._id) {
+        normalizedMember._id = member._id;
+      }
+
+      return normalizedMember;
+    })
+  );
+};
 
 // Get all branches (public endpoint)
 const getAllBranches = asyncHandler(async (req, res) => {
@@ -48,7 +150,8 @@ const getBranchById = asyncHandler(async (req, res) => {
 
   const branch = await Branch.findById(id)
     .populate("createdBy", "username email")
-    .populate("updatedBy", "username email");
+    .populate("updatedBy", "username email")
+    .populate("teamMembers.userId", "username surname email membershipNumber profilePic membershipStatus");
 
   if (!branch) {
     throw new ApiError(404, "Branch not found");
@@ -143,34 +246,7 @@ const createBranch = asyncHandler(async (req, res) => {
     }
   }
 
-  // Process team member profile pictures
-  let processedTeamMembers = [];
-  if (teamMembers && Array.isArray(teamMembers)) {
-    processedTeamMembers = await Promise.all(
-      teamMembers.map(async (member, index) => {
-        let profilePicUrl = "";
-        
-        if (req.files && req.files[`teamMember_${index}_profilePic`]) {
-          try {
-            const profilePicResult = await uploadOnCloudinary(
-              req.files[`teamMember_${index}_profilePic`][0].path,
-              "Team Member Profiles"
-            );
-            if (profilePicResult && profilePicResult.secure_url) {
-              profilePicUrl = profilePicResult.secure_url;
-            }
-          } catch (error) {
-            console.error(`Team member ${index} profile pic upload failed:`, error);
-          }
-        }
-
-        return {
-          ...member,
-          profilePic: profilePicUrl
-        };
-      })
-    );
-  }
+  const processedTeamMembers = await normalizeTeamMembers(teamMembers, req.files);
 
   // Create branch
   // Sanitize programs: allow empty list and drop blank entries
@@ -297,37 +373,11 @@ const updateBranch = asyncHandler(async (req, res) => {
   }
 
   // Handle team member profile picture updates
-  if (updateData.teamMembers && Array.isArray(updateData.teamMembers)) {
-    updateData.teamMembers = await Promise.all(
-      updateData.teamMembers.map(async (member, index) => {
-        let profilePicUrl = member.profilePic || "";
-        
-        if (req.files && req.files[`teamMember_${index}_profilePic`]) {
-          try {
-            // Delete old profile pic if exists
-            if (member.profilePic) {
-              const publicId = member.profilePic.split("/").pop().split(".")[0];
-              await cloudinary.uploader.destroy(`Team Member Profiles/${publicId}`);
-            }
-            
-            // Upload new profile pic
-            const profilePicResult = await uploadOnCloudinary(
-              req.files[`teamMember_${index}_profilePic`][0].path,
-              "Team Member Profiles"
-            );
-            if (profilePicResult && profilePicResult.secure_url) {
-              profilePicUrl = profilePicResult.secure_url;
-            }
-          } catch (error) {
-            console.error(`Team member ${index} profile pic upload failed:`, error);
-          }
-        }
-
-        return {
-          ...member,
-          profilePic: profilePicUrl
-        };
-      })
+  if (Array.isArray(updateData.teamMembers)) {
+    updateData.teamMembers = await normalizeTeamMembers(
+      updateData.teamMembers,
+      req.files,
+      branch.teamMembers || []
     );
   }
 
@@ -389,7 +439,7 @@ const deleteBranch = asyncHandler(async (req, res) => {
   // Delete team member profile pictures
   if (branch.teamMembers && branch.teamMembers.length > 0) {
     for (const member of branch.teamMembers) {
-      if (member.profilePic) {
+      if (isManagedTeamProfile(member.profilePic)) {
         try {
           const publicId = member.profilePic.split("/").pop().split(".")[0];
           await cloudinary.uploader.destroy(`Team Member Profiles/${publicId}`);

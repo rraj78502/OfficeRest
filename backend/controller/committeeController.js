@@ -1,5 +1,6 @@
 const asyncHandler = require("../utils/asyncHandler");
 const CommitteeMember = require("../model/committeeModel");
+const User = require("../model/userModel");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
@@ -9,28 +10,45 @@ function escapeRegex(text) {
   return text.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
 }
 
+function buildMemberDisplayName(userDoc) {
+  const parts = [userDoc?.username, userDoc?.surname].filter(Boolean);
+  const joined = parts.join(" ").trim();
+  return joined || userDoc?.email || "";
+}
+
 // Create a new committee member
 const createCommitteeMember = asyncHandler(async (req, res) => {
   const { name, role, bio, committeeTitle, startDate, endDate, userId } = req.body;
 
-  // Validate required fields
-  const requiredFields = { name, role, bio, committeeTitle, startDate, endDate };
+  const requiredFields = { role, bio, committeeTitle, startDate, endDate, userId };
   for (const [key, value] of Object.entries(requiredFields)) {
     if (!value) {
       throw new ApiError(400, `Field '${key}' is required`);
     }
   }
 
-  // Validate userId if provided
-  if (userId) {
-    const userExists = await User.findById(userId);
-    if (!userExists) {
-      throw new ApiError(404, "Associated user not found");
-    }
+  const normalizedRole = typeof role === "string" ? role.trim() : "";
+  const normalizedBio = typeof bio === "string" ? bio.trim() : "";
+  const normalizedCommitteeTitle = typeof committeeTitle === "string" ? committeeTitle.trim() : "";
+  const normalizedStartDate = typeof startDate === "string" ? startDate.trim() : "";
+  const normalizedEndDate = typeof endDate === "string" ? endDate.trim() : "";
+
+  if (!normalizedRole || !normalizedBio || !normalizedCommitteeTitle || !normalizedStartDate || !normalizedEndDate) {
+    throw new ApiError(400, "Committee member details are incomplete");
+  }
+
+  const linkedUser = await User.findById(userId).select(
+    "username surname email profilePic membershipStatus"
+  );
+  if (!linkedUser) {
+    throw new ApiError(404, "Linked member not found");
+  }
+  if (linkedUser.membershipStatus !== "approved") {
+    throw new ApiError(400, "Member must be approved before being assigned to a committee");
   }
 
   // Upload profile picture to Cloudinary (if provided)
-  let profilePicUrl = "";
+  let profilePicUrl = linkedUser.profilePic || "";
   if (req.files && req.files.profilePic) {
     try {
       const profilePicResult = await uploadOnCloudinary(
@@ -47,16 +65,15 @@ const createCommitteeMember = asyncHandler(async (req, res) => {
     }
   }
 
-  // Create committee member
   const committeeMember = await CommitteeMember.create({
-    name,
-    role,
-    bio,
-    committeeTitle,
-    startDate,
-    endDate,
+    name: (typeof name === "string" && name.trim()) || buildMemberDisplayName(linkedUser),
+    role: normalizedRole,
+    bio: normalizedBio,
+    committeeTitle: normalizedCommitteeTitle,
+    startDate: normalizedStartDate,
+    endDate: normalizedEndDate,
     profilePic: profilePicUrl,
-    userId: userId || null,
+    userId: linkedUser._id,
   });
 
   return res
@@ -77,7 +94,7 @@ const getAllCommitteeMembers = asyncHandler(async (req, res) => {
 
   const committeeMembers = await CommitteeMember.find(query).populate({
     path: "userId",
-    select: "username email",
+    select: "username surname email membershipNumber profilePic membershipStatus",
     options: { strictPopulate: false }
   });
 
@@ -94,7 +111,10 @@ const getAllCommitteeMembers = asyncHandler(async (req, res) => {
 // Get committee member by ID
 const getCommitteeMemberById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const committeeMember = await CommitteeMember.findById(id).populate("userId", "username email");
+  const committeeMember = await CommitteeMember.findById(id).populate(
+    "userId",
+    "username surname email membershipNumber profilePic membershipStatus"
+  );
 
   if (!committeeMember) {
     throw new ApiError(404, "Committee member not found");
@@ -115,12 +135,19 @@ const updateCommitteeMember = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Committee member not found");
   }
 
-  // Validate userId if provided
-  if (userId) {
-    const userExists = await User.findById(userId);
-    if (!userExists) {
-      throw new ApiError(404, "Associated user not found");
-    }
+  const targetUserId = userId || committeeMember.userId?.toString();
+  if (!targetUserId) {
+    throw new ApiError(400, "Linked member is required");
+  }
+
+  const linkedUser = await User.findById(targetUserId).select(
+    "username surname email profilePic membershipStatus"
+  );
+  if (!linkedUser) {
+    throw new ApiError(404, "Linked member not found");
+  }
+  if (linkedUser.membershipStatus !== "approved") {
+    throw new ApiError(400, "Member must be approved before being assigned to a committee");
   }
 
   // Update profile picture if provided
@@ -146,14 +173,25 @@ const updateCommitteeMember = asyncHandler(async (req, res) => {
     }
   }
 
+  if (!req.files?.profilePic && !committeeMember.profilePic && linkedUser.profilePic) {
+    committeeMember.profilePic = linkedUser.profilePic;
+  }
+
   // Update fields
-  committeeMember.name = name || committeeMember.name;
-  committeeMember.role = role || committeeMember.role;
-  committeeMember.bio = bio || committeeMember.bio;
-  committeeMember.committeeTitle = committeeTitle || committeeMember.committeeTitle;
-  committeeMember.startDate = startDate || committeeMember.startDate;
-  committeeMember.endDate = endDate || committeeMember.endDate;
-  committeeMember.userId = userId !== undefined ? userId : committeeMember.userId;
+  committeeMember.userId = linkedUser._id;
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+  const normalizedRole = typeof role === "string" ? role.trim() : null;
+  const normalizedBio = typeof bio === "string" ? bio.trim() : null;
+  const normalizedCommitteeTitle = typeof committeeTitle === "string" ? committeeTitle.trim() : null;
+  const normalizedStartDate = typeof startDate === "string" ? startDate.trim() : null;
+  const normalizedEndDate = typeof endDate === "string" ? endDate.trim() : null;
+
+  committeeMember.name = normalizedName || buildMemberDisplayName(linkedUser);
+  if (normalizedRole) committeeMember.role = normalizedRole;
+  if (normalizedBio) committeeMember.bio = normalizedBio;
+  if (normalizedCommitteeTitle) committeeMember.committeeTitle = normalizedCommitteeTitle;
+  if (normalizedStartDate) committeeMember.startDate = normalizedStartDate;
+  if (normalizedEndDate) committeeMember.endDate = normalizedEndDate;
 
   await committeeMember.save();
 
