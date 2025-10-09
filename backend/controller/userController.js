@@ -318,6 +318,28 @@ const logoutUserController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
 
+const lookupMemberByEmployeeId = asyncHandler(async (req, res) => {
+  const { employeeId } = req.query;
+
+  if (!employeeId || typeof employeeId !== "string" || !employeeId.trim()) {
+    throw new ApiError(400, "employeeId query parameter is required");
+  }
+
+  const normalizedEmployeeId = employeeId.trim().toLowerCase();
+
+  const user = await User.findOne({ employeeId: normalizedEmployeeId }).select(
+    "username surname email mobileNumber membershipNumber registrationNumber profilePic membershipStatus role address province district municipality wardNumber tole"
+  );
+
+  if (!user) {
+    throw new ApiError(404, "Member not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Member lookup successful"));
+});
+
 // Get all users
 const getAllUsersController = asyncHandler(async (req, res) => {
   const { status } = req.query;
@@ -595,6 +617,7 @@ module.exports = {
   approveMembershipController,
   checkFieldAvailabilityController,
   declineMembershipController,
+  lookupMemberByEmployeeId,
   // Forgot/Reset password controllers
   requestPasswordReset: asyncHandler(async (req, res) => {
     const { email } = req.body;

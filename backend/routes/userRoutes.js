@@ -11,6 +11,7 @@ const {
   approveMembershipController,
   checkFieldAvailabilityController,
   declineMembershipController,
+  lookupMemberByEmployeeId,
 } = require("../controller/userController");
 const verifyJWT = require("../middleware/authMiddleware");
 const verifyAdmin = require("../middleware/verifyAdmin");
@@ -56,6 +57,7 @@ router.post("/forgot-password/reset", async (req, res, next) => {
   }
 });
 router.get("/check-availability", checkFieldAvailabilityController);
+router.get("/lookup", verifyJWT, verifyAdmin, lookupMemberByEmployeeId);
 
 // Protected routes
 router.post("/logout", logoutUserController);
