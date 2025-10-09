@@ -37,7 +37,7 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
       const rawUserId = member?.userId;
       let linkedUser = null;
 
-      if (rawUserId && !clearedUserIdValues.includes(rawUserId as any)) {
+      if (rawUserId && !clearedUserIdValues.includes(String(rawUserId))) {
         const lookupId = typeof rawUserId === "object" && rawUserId !== null ? rawUserId._id : rawUserId;
         linkedUser = await User.findById(lookupId).select(
           "username surname email profilePic membershipStatus employeeId"
@@ -92,7 +92,7 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
       const normalizedMember = {
         userId: linkedUser
           ? linkedUser._id
-          : existingUserId && !clearedUserIdValues.includes(existingUserId as any)
+          : existingUserId && !clearedUserIdValues.includes(String(existingUserId))
             ? existingUserId
             : null,
         name: normalizedName || existing?.name || (linkedUser ? buildMemberDisplayName(linkedUser) : undefined),
