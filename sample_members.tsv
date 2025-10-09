@@ -1,6 +1,6 @@
-Employee ID	First Name	Last Name	Email	Mobile	Telephone	Province	District	Municipality	Ward	Tole	Post At Retirement	Pension Lease Number	Office	Service Start Date	Service Retirement Date	Date Of Fill Up	Place
-emp1001	Hari	Shrestha	hari.shrestha@example.com	9800000001	014400001	Bagmati	Kathmandu	Kathmandu	4	Baneshwor	Senior Engineer	PLN-1001	NTC HQ	2001-04-15	2031-04-15	2024-10-01	Kathmandu
-emp1002	Sita	Adhikari	sita.adhikari@example.com	9800000002	014400002	Bagmati	Lalitpur	Lalitpur	10	Jhamsikhel	Accountant	PLN-1002	NTC Lalitpur	2005-05-21	2035-05-21	2024-10-02	Lalitpur
-emp1003	Rajan	KC	rajan.kc@example.com	9800000003	014400003	Bagmati	Bhaktapur	Bhaktapur	5	Suryabinayak	Supervisor	PLN-1003	NTC Bhaktapur	2003-03-10	2033-03-10	2024-10-03	Bhaktapur
-emp1004	Mina	Gurung	mina.gurung@example.com	9800000004	014400004	Gandaki	Kaski	Pokhara	12	Lakeside	Technician	PLN-1004	NTC Pokhara	2008-08-18	2038-08-18	2024-10-04	Pokhara
-emp1005	Ajay	Thapa	ajay.thapa@example.com	9800000005	014400005	Lumbini	Rupandehi	Butwal	7	Golpark	Officer	PLN-1005	NTC Butwal	2010-11-25	2040-11-25	2024-10-05	Butwal
+Employee ID	First Name	Surname	Email	Mobile	Telephone	Address	Province	District	Municipality	Ward Number	Tole	DOB	Post At Retirement	Pension Lease Number	Office	Service Start Date	Service Retirement Date	Date Of Fill Up	Place	Role	Membership Status
+emp1001	Hari	Shrestha	hari.shrestha@example.com	9800000001	014400001	House 12, Baneshwor	Bagmati	Kathmandu	Kathmandu	4	Baneshwor	1979-12-15	Senior Engineer	PLN-1001	NTC HQ	2001-04-15	2031-04-15	2024-10-01	Kathmandu	user	approved
+emp1002	Sita	Adhikari	sita.adhikari@example.com	9800000002	014400002	Ward 10, Lalitpur	Bagmati	Lalitpur	Lalitpur	10	Jhamsikhel	1982-05-02	Accountant	PLN-1002	NTC Lalitpur	2005-05-21	2035-05-21	2024-10-02	Lalitpur	user	approved
+emp1003	Rajan	KC	rajan.kc@example.com	9800000003	014400003	Suryabinayak-5	Bagmati	Bhaktapur	Bhaktapur	5	Suryabinayak	1980-08-20	Supervisor	PLN-1003	NTC Bhaktapur	2003-03-10	2033-03-10	2024-10-03	Bhaktapur	user	approved
+emp1004	Mina	Gurung	mina.gurung@example.com	9800000004	014400004	Lakeside-12	Gandaki	Kaski	Pokhara	12	Lakeside	1985-02-11	Technician	PLN-1004	NTC Pokhara	2008-08-18	2038-08-18	2024-10-04	Pokhara	user	approved
+emp1005	Ajay	Thapa	ajay.thapa@example.com	9800000005	014400005	Golpark-7	Lumbini	Rupandehi	Butwal	7	Golpark	1987-09-30	Officer	PLN-1005	NTC Butwal	2010-11-25	2040-11-25	2024-10-05	Butwal	user	approved

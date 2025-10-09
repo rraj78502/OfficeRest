@@ -133,7 +133,7 @@ const Members: React.FC = () => {
     const employeeId = getExcelValue(row, ["employeeId", "Employee ID", "EmployeeId"]);
     const email = getExcelValue(row, ["email", "Email"]);
     let username = getExcelValue(row, ["username", "First Name", "Given Name"]);
-    let surname = getExcelValue(row, ["surname", "Last Name", "Family Name"]);
+    let surname = getExcelValue(row, ["surname", "Surname", "Last Name", "Family Name"]);
     const fullName = getExcelValue(row, ["name", "Name", "Full Name"]);
 
     if ((!username || !surname) && fullName) {
