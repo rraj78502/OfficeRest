@@ -27,6 +27,12 @@ import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
+const formatDate = (value?: string | null) => {
+  if (!value || typeof value !== "string") return "";
+  const parts = value.split("T");
+  return parts[0] || value;
+};
+
 interface Member {
   _id: string;
   employeeId: string;
@@ -216,13 +222,13 @@ const Members: React.FC = () => {
           tole: user.tole,
           telephoneNumber: user.telephoneNumber,
           mobileNumber: user.mobileNumber,
-          dob: user.dob.split("T")[0],
+          dob: formatDate(user.dob),
           postAtRetirement: user.postAtRetirement,
           pensionLeaseNumber: user.pensionLeaseNumber,
           office: user.office,
-          serviceStartDate: user.serviceStartDate.split("T")[0],
-          serviceRetirementDate: user.serviceRetirementDate.split("T")[0],
-          dateOfFillUp: user.dateOfFillUp.split("T")[0],
+          serviceStartDate: formatDate(user.serviceStartDate),
+          serviceRetirementDate: formatDate(user.serviceRetirementDate),
+          dateOfFillUp: formatDate(user.dateOfFillUp),
           place: user.place,
           email: user.email,
           membershipNumber: user.membershipNumber,
@@ -316,13 +322,13 @@ const Members: React.FC = () => {
         tole: userData.tole,
         telephoneNumber: userData.telephoneNumber,
         mobileNumber: userData.mobileNumber,
-        dob: userData.dob.split("T")[0],
+        dob: formatDate(userData.dob),
         postAtRetirement: userData.postAtRetirement,
         pensionLeaseNumber: userData.pensionLeaseNumber,
         office: userData.office,
-        serviceStartDate: userData.serviceStartDate.split("T")[0],
-        serviceRetirementDate: userData.serviceRetirementDate.split("T")[0],
-        dateOfFillUp: userData.dateOfFillUp.split("T")[0],
+        serviceStartDate: formatDate(userData.serviceStartDate),
+        serviceRetirementDate: formatDate(userData.serviceRetirementDate),
+        dateOfFillUp: formatDate(userData.dateOfFillUp),
         place: userData.place,
         email: userData.email,
         role: userData.role,
