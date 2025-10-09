@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, MapPin, Phone, Mail, Clock } from 'lucide-react';
+import { AxiosError } from 'axios';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,12 +14,41 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { lookupMemberByEmployeeId } from '@/api/memberLookup';
+import { MemberLookup, buildMemberDisplayName } from '@/types/member';
 
-interface TeamMember {
+interface BranchTeamMember {
+  _id?: string;
+  name?: string;
+  position?: string;
+  experience?: string;
+  profilePic?: string;
+  userId?: string | MemberLookup | null;
+}
+
+interface TeamMemberForm {
   name: string;
   position: string;
   experience: string;
   profilePic: string;
+  userId?: string | null;
+  employeeId?: string;
+  linkedMember?: MemberLookup | null;
+  lookupError?: string;
+  lookupLoading?: boolean;
+}
+
+interface BranchFormData {
+  name: string;
+  address: string;
+  mapLink: string;
+  description: string;
+  contact: { phone: string; email: string };
+  workingHours: string;
+  services: Service[];
+  uniquePrograms: Program[];
+  teamMembers: TeamMemberForm[];
+  order: number;
 }
 
 interface Service {
@@ -46,7 +76,7 @@ interface Branch {
   workingHours: string;
   services: Service[];
   uniquePrograms: Program[];
-  teamMembers: TeamMember[];
+  teamMembers: BranchTeamMember[];
   heroImage: string;
   isActive: boolean;
   order: number;
@@ -56,11 +86,22 @@ interface Branch {
 
 const Branches = () => {
   const API_BASE_URL = import.meta.env.VITE_API_URL;
+  const emptyTeamMember: TeamMemberForm = {
+    name: '',
+    position: '',
+    experience: '',
+    profilePic: '',
+    userId: null,
+    employeeId: '',
+    linkedMember: null,
+    lookupError: '',
+    lookupLoading: false,
+  };
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<BranchFormData>({
     name: '',
     address: '',
     mapLink: '',
@@ -69,11 +110,11 @@ const Branches = () => {
     workingHours: 'Sunday - Friday: 10:00 AM - 5:00 PM',
     services: [],
     uniquePrograms: [],
-    teamMembers: [{ name: '', position: '', experience: '', profilePic: '' }],
+    teamMembers: [{ ...emptyTeamMember }],
     order: 0
   });
   const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
-  const [teamMemberFiles, setTeamMemberFiles] = useState<(File | null)[]>([]);
+  const [teamMemberFiles, setTeamMemberFiles] = useState<(File | null)[]>([null]);
 
   const { toast } = useToast();
 
@@ -115,6 +156,27 @@ const Branches = () => {
     fetchBranches();
   }, []);
 
+  const mapBranchTeamMembersToForm = (members: BranchTeamMember[]): TeamMemberForm[] => {
+    if (!members || members.length === 0) {
+      return [{ ...emptyTeamMember }];
+    }
+
+    return members.map((member) => {
+      const linked = member.userId && typeof member.userId !== 'string' ? (member.userId as MemberLookup) : null;
+      return {
+        name: member.name || '',
+        position: member.position || '',
+        experience: member.experience || '',
+        profilePic: member.profilePic || '',
+        userId: linked?._id || (typeof member.userId === 'string' ? member.userId : null) || null,
+        employeeId: linked?.employeeId || '',
+        linkedMember: linked,
+        lookupError: '',
+        lookupLoading: false,
+      };
+    });
+  };
+
   // Form handlers
   const resetForm = () => {
     setFormData({
@@ -126,11 +188,11 @@ const Branches = () => {
       workingHours: 'Sunday - Friday: 10:00 AM - 5:00 PM',
       services: [],
       uniquePrograms: [],
-      teamMembers: [{ name: '', position: '', experience: '', profilePic: '' }],
+      teamMembers: [{ ...emptyTeamMember }],
       order: 0
     });
     setHeroImageFile(null);
-    setTeamMemberFiles([]);
+    setTeamMemberFiles([null]);
     setEditingBranch(null);
   };
 
@@ -170,6 +232,113 @@ const Branches = () => {
     }
   };
 
+  const handleTeamMemberEmployeeIdChange = (index: number, value: string) => {
+    setFormData(prev => {
+      const teamMembers = [...prev.teamMembers];
+      const current = teamMembers[index] ?? { ...emptyTeamMember };
+      teamMembers[index] = {
+        ...current,
+        employeeId: value,
+        userId: null,
+        linkedMember: null,
+        lookupError: "",
+        lookupLoading: false,
+      };
+      return { ...prev, teamMembers };
+    });
+  };
+
+  const handleTeamMemberLookup = async (index: number) => {
+    const employeeId = formData.teamMembers[index]?.employeeId?.trim();
+    if (!employeeId) {
+      setFormData(prev => {
+        const teamMembers = [...prev.teamMembers];
+        if (teamMembers[index]) {
+          teamMembers[index] = {
+            ...teamMembers[index],
+            lookupError: "Please enter an employee ID",
+          };
+        }
+        return { ...prev, teamMembers };
+      });
+      return;
+    }
+
+    setFormData(prev => {
+      const teamMembers = [...prev.teamMembers];
+      if (teamMembers[index]) {
+        teamMembers[index] = {
+          ...teamMembers[index],
+          lookupLoading: true,
+          lookupError: "",
+        };
+      }
+      return { ...prev, teamMembers };
+    });
+
+    try {
+      const member = await lookupMemberByEmployeeId(employeeId);
+      setFormData(prev => {
+        const teamMembers = [...prev.teamMembers];
+        const current = teamMembers[index] ?? { ...emptyTeamMember };
+        teamMembers[index] = {
+          ...current,
+          userId: member._id,
+          employeeId: member.employeeId || employeeId,
+          name: current.name || buildMemberDisplayName(member) || "",
+          linkedMember: member,
+          lookupLoading: false,
+          lookupError: "",
+        };
+        return { ...prev, teamMembers };
+      });
+      toast({
+        title: "Member linked",
+        description: `Using profile for ${buildMemberDisplayName(member)}`,
+      });
+    } catch (error) {
+      const message =
+        error instanceof AxiosError
+          ? error.response?.data?.message || "Failed to lookup member"
+          : "Failed to lookup member";
+      setFormData(prev => {
+        const teamMembers = [...prev.teamMembers];
+        if (teamMembers[index]) {
+          teamMembers[index] = {
+            ...teamMembers[index],
+            lookupLoading: false,
+            lookupError: message,
+            linkedMember: null,
+            userId: null,
+          };
+        }
+        return { ...prev, teamMembers };
+      });
+      toast({
+        title: "Lookup failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleClearTeamMemberLink = (index: number) => {
+    setFormData(prev => {
+      const teamMembers = [...prev.teamMembers];
+      if (teamMembers[index]) {
+        teamMembers[index] = {
+          ...teamMembers[index],
+          userId: null,
+          linkedMember: null,
+          employeeId: '',
+          lookupError: '',
+          lookupLoading: false,
+        };
+      }
+      return { ...prev, teamMembers };
+    });
+  };
+
   // API operations
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,7 +370,20 @@ const Branches = () => {
       formDataToSend.append('workingHours', formData.workingHours);
       formDataToSend.append('services', JSON.stringify(formData.services));
       formDataToSend.append('uniquePrograms', JSON.stringify(formData.uniquePrograms));
-      formDataToSend.append('teamMembers', JSON.stringify(formData.teamMembers));
+      const serializedTeamMembers = formData.teamMembers.map((member) => {
+        const normalizedUserId = member.userId && !['null', 'undefined', ''].includes(String(member.userId).trim())
+          ? String(member.userId).trim()
+          : undefined;
+
+        return {
+          name: member.name?.trim() || undefined,
+          position: member.position?.trim() || undefined,
+          experience: member.experience?.trim() || undefined,
+          profilePic: member.profilePic || undefined,
+          userId: normalizedUserId,
+        };
+      });
+      formDataToSend.append('teamMembers', JSON.stringify(serializedTeamMembers));
       formDataToSend.append('order', formData.order.toString());
 
       // Add hero image
@@ -260,6 +442,7 @@ const Branches = () => {
 
   const handleEdit = (branch: Branch) => {
     setEditingBranch(branch);
+    const mappedTeamMembers = mapBranchTeamMembersToForm(branch.teamMembers);
     setFormData({
       name: branch.name,
       address: branch.address,
@@ -269,10 +452,10 @@ const Branches = () => {
       workingHours: branch.workingHours,
       services: branch.services,
       uniquePrograms: branch.uniquePrograms,
-      teamMembers: branch.teamMembers.length ? branch.teamMembers : [{ name: '', position: '', experience: '', profilePic: '' }],
+      teamMembers: mappedTeamMembers,
       order: branch.order
     });
-    setTeamMemberFiles(new Array(branch.teamMembers.length).fill(null));
+    setTeamMemberFiles(new Array(mappedTeamMembers.length).fill(null));
     setShowCreateDialog(true);
   };
 
@@ -590,17 +773,17 @@ const Branches = () => {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => addArrayItem('teamMembers', { name: '', position: '', experience: '', profilePic: '' })}
+                        onClick={() => addArrayItem('teamMembers', { ...emptyTeamMember })}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Add Team Member
                       </Button>
                     </div>
-                    {formData.teamMembers.map((member, index) => (
-                      <Card key={index}>
-                        <CardContent className="pt-6">
-                          <div className="flex justify-between items-center mb-4">
-                            <h4 className="font-medium">Team Member {index + 1}</h4>
+                  {formData.teamMembers.map((member, index) => (
+                    <Card key={index}>
+                      <CardContent className="pt-6">
+                        <div className="flex justify-between items-center mb-4">
+                          <h4 className="font-medium">Team Member {index + 1}</h4>
                             <Button
                               type="button"
                               variant="destructive"
@@ -611,6 +794,60 @@ const Branches = () => {
                             </Button>
                           </div>
                           <div className="space-y-4">
+                            <div>
+                              <Label>Employee ID</Label>
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <Input
+                                  value={member.employeeId || ''}
+                                  onChange={(e) => handleTeamMemberEmployeeIdChange(index, e.target.value)}
+                                  placeholder="Enter employee ID"
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleTeamMemberLookup(index)}
+                                    disabled={member.lookupLoading}
+                                  >
+                                    {member.lookupLoading ? 'Searching...' : 'Lookup'}
+                                  </Button>
+                                  {(member.userId && String(member.userId).trim() !== '') && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleClearTeamMemberLink(index)}
+                                    >
+                                      Clear
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              {member.lookupError && (
+                                <p className="text-xs text-red-500 mt-1">{member.lookupError}</p>
+                              )}
+                              {member.linkedMember && (
+                                <div className="mt-2 rounded-md border bg-gray-50 p-3 text-sm space-y-1">
+                                  <p>
+                                    <strong>Member:</strong> {buildMemberDisplayName(member.linkedMember)}
+                                  </p>
+                                  {member.linkedMember.employeeId && (
+                                    <p>
+                                      <strong>Employee ID:</strong> {member.linkedMember.employeeId}
+                                    </p>
+                                  )}
+                                  {member.linkedMember.membershipNumber && (
+                                    <p>
+                                      <strong>Membership #:</strong> {member.linkedMember.membershipNumber}</p>
+                                  )}
+                                  {member.linkedMember.email && (
+                                    <p>
+                                      <strong>Email:</strong> {member.linkedMember.email}</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <div>
                               <Label>Name</Label>
                               <Input
@@ -643,6 +880,16 @@ const Branches = () => {
                                   setTeamMemberFiles(newFiles);
                                 }}
                               />
+                              {editingBranch && member.profilePic && !teamMemberFiles[index] && (
+                                <a
+                                  href={member.profilePic}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600"
+                                >
+                                  View current photo
+                                </a>
+                              )}
                             </div>
                           </div>
                         </CardContent>

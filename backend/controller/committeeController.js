@@ -88,7 +88,7 @@ const getAllCommitteeMembers = asyncHandler(async (req, res) => {
 
   const committeeMembers = await CommitteeMember.find(query).populate({
     path: "userId",
-    select: "username surname email membershipNumber profilePic membershipStatus",
+    select: "username surname email membershipNumber employeeId profilePic membershipStatus",
     options: { strictPopulate: false }
   });
 
@@ -107,7 +107,7 @@ const getCommitteeMemberById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const committeeMember = await CommitteeMember.findById(id).populate(
     "userId",
-    "username surname email membershipNumber profilePic membershipStatus"
+    "username surname email membershipNumber employeeId profilePic membershipStatus"
   );
 
   if (!committeeMember) {

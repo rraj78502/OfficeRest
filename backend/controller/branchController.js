@@ -30,12 +30,17 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
     return acc;
   }, {});
 
+  const clearedUserIdValues = [null, undefined, "", "null", "undefined"];
+
   return Promise.all(
     teamMembers.map(async (member, index) => {
+      const rawUserId = member?.userId;
       let linkedUser = null;
-      if (member && member.userId) {
-        linkedUser = await User.findById(member.userId).select(
-          "username surname email profilePic membershipStatus"
+
+      if (rawUserId && !clearedUserIdValues.includes(rawUserId as any)) {
+        const lookupId = typeof rawUserId === "object" && rawUserId !== null ? rawUserId._id : rawUserId;
+        linkedUser = await User.findById(lookupId).select(
+          "username surname email profilePic membershipStatus employeeId"
         );
         if (!linkedUser) {
           throw new ApiError(404, `Linked member not found for team member at position ${index + 1}`);
@@ -50,6 +55,11 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
       const normalizedExperience = typeof member?.experience === "string" ? member.experience.trim() : "";
 
       const existing = member._id && existingById[member._id] ? existingById[member._id] : null;
+      let existingUserId = existing?.userId ?? null;
+      if (existingUserId && typeof existingUserId === "object" && "_id" in existingUserId) {
+        existingUserId = existingUserId._id;
+      }
+
       let profilePicUrl =
         (typeof member.profilePic === "string" && member.profilePic.trim()) ||
         (existing && existing.profilePic) ||
@@ -80,7 +90,11 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
       }
 
       const normalizedMember = {
-        userId: linkedUser ? linkedUser._id : existing?.userId ?? null,
+        userId: linkedUser
+          ? linkedUser._id
+          : existingUserId && !clearedUserIdValues.includes(existingUserId as any)
+            ? existingUserId
+            : null,
         name: normalizedName || existing?.name || (linkedUser ? buildMemberDisplayName(linkedUser) : undefined),
         position: normalizedPosition || existing?.position,
         experience: normalizedExperience || existing?.experience,
@@ -140,7 +154,7 @@ const getBranchById = asyncHandler(async (req, res) => {
   const branch = await Branch.findById(id)
     .populate("createdBy", "username email")
     .populate("updatedBy", "username email")
-    .populate("teamMembers.userId", "username surname email membershipNumber profilePic membershipStatus");
+    .populate("teamMembers.userId", "username surname email membershipNumber employeeId profilePic membershipStatus");
 
   if (!branch) {
     throw new ApiError(404, "Branch not found");

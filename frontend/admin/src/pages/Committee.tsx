@@ -23,21 +23,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import axios, { AxiosError } from "axios";
+import { lookupMemberByEmployeeId } from "@/api/memberLookup";
+import { MemberLookup, buildMemberDisplayName } from "@/types/member";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
+type LinkedUser = MemberLookup | string | null | undefined;
+
 interface CommitteeMember {
   _id: string;
-  name: string;
-  role: string;
-  bio: string;
-  committeeTitle: string;
-  startDate: string;
-  endDate: string;
+  name?: string;
+  role?: string;
+  bio?: string;
+  committeeTitle?: string;
+  startDate?: string;
+  endDate?: string;
   profilePic?: string;
-  userId?: string | null;
+  userId?: LinkedUser;
 }
 
 interface FormData {
@@ -75,8 +79,36 @@ const CommitteeManagement: React.FC = () => {
     profilePic: null,
     userId: "",
   });
+  const [employeeIdInput, setEmployeeIdInput] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupResult, setLookupResult] = useState<MemberLookup | null>(null);
+  const [lookupError, setLookupError] = useState("");
 
   // Fetch all committee members
+  const getLinkedUser = (value: LinkedUser): MemberLookup | null => {
+    if (!value) return null;
+    if (typeof value === "string") return null;
+    return value as MemberLookup;
+  };
+
+  const computeDisplayName = (member: CommitteeMember): string => {
+    const linked = getLinkedUser(member.userId);
+    const displayName = member.name || buildMemberDisplayName(linked);
+    return displayName || "";
+  };
+
+  const computeProfilePic = (member: CommitteeMember): string | undefined => {
+    const linked = getLinkedUser(member.userId);
+    return member.profilePic || linked?.profilePic || undefined;
+  };
+
+  const computeInitials = (displayName: string): string => {
+    if (!displayName) return "--";
+    const parts = displayName.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "--";
+    return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "--";
+  };
+
   const fetchCommitteeMembers = async () => {
     try {
       setLoading(true);
@@ -89,11 +121,17 @@ const CommitteeManagement: React.FC = () => {
         }
       );
       
-      const committeeMembers = response.data.data;
+      const committeeMembers: CommitteeMember[] = response.data.data || [];
       setCommittees(committeeMembers);
       
       // Extract unique committee titles for filtering
-      const titles = Array.from(new Set(committeeMembers.map((m: CommitteeMember) => m.committeeTitle)));
+      const titles = Array.from(
+        new Set(
+          committeeMembers
+            .map((m: CommitteeMember) => m.committeeTitle)
+            .filter((title): title is string => Boolean(title))
+        )
+      );
       setAvailableTitles(titles as string[]);
     } catch (error: unknown) {
       const errorMessage =
@@ -151,17 +189,69 @@ const CommitteeManagement: React.FC = () => {
     }
   };
 
+  const handleMemberLookup = async () => {
+    const trimmedId = employeeIdInput.trim();
+    if (!trimmedId) {
+      setLookupError("Please enter an employee ID to look up");
+      setLookupResult(null);
+      return;
+    }
+
+    try {
+      setLookupLoading(true);
+      setLookupError("");
+      const result = await lookupMemberByEmployeeId(trimmedId);
+      setLookupResult(result);
+      setEmployeeIdInput(result.employeeId || trimmedId);
+      toast({
+        title: "Member linked",
+        description: `Using profile for ${buildMemberDisplayName(result)}`,
+      });
+      setFormData((prev) => ({
+        ...prev,
+        userId: result._id,
+        name: prev.name || buildMemberDisplayName(result) || "",
+      }));
+    } catch (error) {
+      const message =
+        error instanceof AxiosError
+          ? error.response?.data?.message || "Failed to lookup member"
+          : "Failed to lookup member";
+      setLookupResult(null);
+      setLookupError(message);
+      toast({
+        title: "Lookup failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const handleClearMemberLink = () => {
+    setLookupResult(null);
+    setFormData((prev) => ({ ...prev, userId: "" }));
+    setEmployeeIdInput("");
+    setLookupError("");
+  };
+
   const handleEdit = (member: CommitteeMember) => {
     setCurrentMember(member);
+    const linked = getLinkedUser(member.userId);
+    setLookupResult(linked);
+    setEmployeeIdInput(linked?.employeeId || "");
+    setLookupError("");
     setFormData({
-      name: member.name,
-      role: member.role,
-      bio: member.bio,
-      committeeTitle: member.committeeTitle,
-      startDate: member.startDate,
-      endDate: member.endDate,
+      name: member.name || buildMemberDisplayName(linked) || "",
+      role: member.role || "",
+      bio: member.bio || "",
+      committeeTitle: member.committeeTitle || "",
+      startDate: member.startDate || "",
+      endDate: member.endDate || "",
       profilePic: null,
-      userId: member.userId || "",
+      userId:
+        (linked?._id || (typeof member.userId === "string" ? member.userId : "")) ?? "",
     });
     setIsEditMode(true);
     setIsModalOpen(true);
@@ -173,11 +263,26 @@ const CommitteeManagement: React.FC = () => {
     try {
       setError("");
       const data = new FormData();
-      Object.entries(formData).forEach(([key, value]) => {
-        if (value) {
-          data.append(key, value as string | Blob);
-        }
-      });
+
+      const trimmedName = formData.name.trim();
+      const trimmedRole = formData.role.trim();
+      const trimmedBio = formData.bio.trim();
+      const trimmedTitle = formData.committeeTitle.trim();
+      const trimmedStart = formData.startDate.trim();
+      const trimmedEnd = formData.endDate.trim();
+
+      if (trimmedName) data.append("name", trimmedName);
+      if (trimmedRole) data.append("role", trimmedRole);
+      if (trimmedBio) data.append("bio", trimmedBio);
+      if (trimmedTitle) data.append("committeeTitle", trimmedTitle);
+      if (trimmedStart) data.append("startDate", trimmedStart);
+      if (trimmedEnd) data.append("endDate", trimmedEnd);
+      if (formData.userId && formData.userId.trim()) {
+        data.append("userId", formData.userId.trim());
+      }
+      if (formData.profilePic) {
+        data.append("profilePic", formData.profilePic);
+      }
 
       if (isEditMode && currentMember) {
         await axios.put(
@@ -276,6 +381,10 @@ const CommitteeManagement: React.FC = () => {
     setIsEditMode(false);
     setIsModalOpen(false);
     setError("");
+    setEmployeeIdInput("");
+    setLookupResult(null);
+    setLookupError("");
+    setLookupLoading(false);
   };
 
   if (!isAuthenticated) {
@@ -299,6 +408,20 @@ const CommitteeManagement: React.FC = () => {
         <Button
           onClick={() => {
             setIsEditMode(false);
+            setFormData({
+              name: "",
+              role: "",
+              bio: "",
+              committeeTitle: "",
+              startDate: "",
+              endDate: "",
+              profilePic: null,
+              userId: "",
+            });
+            setEmployeeIdInput("");
+            setLookupResult(null);
+            setLookupError("");
+            setError("");
             setIsModalOpen(true);
           }}
           className="bg-gray-800 hover:bg-gray-700"
@@ -353,45 +476,55 @@ const CommitteeManagement: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredCommittees.map((member) => (
-                  <TableRow key={member._id}>
-                    <TableCell>
-                      {member.profilePic ? (
-                        <img
-                          src={member.profilePic}
-                          alt={member.name}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
-                          <span className="text-sm font-semibold">
-                            {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">{member.name}</TableCell>
-                    <TableCell>{member.role}</TableCell>
-                    <TableCell>{member.committeeTitle}</TableCell>
-                    <TableCell>{member.startDate} - {member.endDate}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleEdit(member)}
-                        className="text-gray-600 hover:text-gray-900 mr-2"
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleDelete(member._id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredCommittees.map((member) => {
+                  const linkedUser = getLinkedUser(member.userId);
+                  const displayName = computeDisplayName(member) || "N/A";
+                  const avatarSrc = computeProfilePic(member);
+                  const initials = computeInitials(displayName);
+                  const termStart = member.startDate?.trim() || "-";
+                  const termEnd = member.endDate?.trim() || "";
+
+                  return (
+                    <TableRow key={member._id}>
+                      <TableCell>
+                        {avatarSrc ? (
+                          <img
+                            src={avatarSrc}
+                            alt={displayName}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
+                            <span className="text-sm font-semibold">{initials}</span>
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">{displayName}</TableCell>
+                      <TableCell>{member.role || "-"}</TableCell>
+                      <TableCell>{member.committeeTitle || "-"}</TableCell>
+                      <TableCell>
+                        {termStart}
+                        {termEnd ? ` - ${termEnd}` : ""}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleEdit(member)}
+                          className="text-gray-600 hover:text-gray-900 mr-2"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleDelete(member._id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -421,7 +554,6 @@ const CommitteeManagement: React.FC = () => {
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
-                  required
                 />
               </div>
 
@@ -457,7 +589,6 @@ const CommitteeManagement: React.FC = () => {
                   name="bio"
                   value={formData.bio}
                   onChange={handleInputChange}
-                  required
                   rows={3}
                 />
               </div>
@@ -471,7 +602,6 @@ const CommitteeManagement: React.FC = () => {
                   name="committeeTitle"
                   value={formData.committeeTitle}
                   onChange={handleInputChange}
-                  required
                   placeholder="e.g., Central Working Committee"
                 />
               </div>
@@ -486,7 +616,6 @@ const CommitteeManagement: React.FC = () => {
                     name="startDate"
                     value={formData.startDate}
                     onChange={handleInputChange}
-                    required
                     placeholder="e.g., 2081/09/20"
                   />
                 </div>
@@ -500,10 +629,64 @@ const CommitteeManagement: React.FC = () => {
                     name="endDate"
                     value={formData.endDate}
                     onChange={handleInputChange}
-                    required
                     placeholder="e.g., Current or 2082/09/20"
                   />
                 </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="employeeId" className="text-sm font-medium">
+                  Employee ID Lookup
+                </Label>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <Input
+                    id="employeeId"
+                    value={employeeIdInput}
+                    onChange={(e) => {
+                      setEmployeeIdInput(e.target.value);
+                      setLookupError("");
+                    }}
+                    placeholder="Enter employee ID to auto-fill member details"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleMemberLookup}
+                      disabled={lookupLoading}
+                    >
+                      {lookupLoading ? "Searching..." : "Lookup"}
+                    </Button>
+                    {formData.userId && (
+                      <Button type="button" variant="outline" onClick={handleClearMemberLink}>
+                        Clear Link
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {lookupError && <p className="text-xs text-red-500">{lookupError}</p>}
+                {lookupResult && (
+                  <div className="rounded-md border bg-gray-50 p-3 text-sm space-y-1">
+                    <p>
+                      <strong>Member:</strong> {buildMemberDisplayName(lookupResult)}
+                    </p>
+                    {lookupResult.employeeId && (
+                      <p>
+                        <strong>Employee ID:</strong> {lookupResult.employeeId}
+                      </p>
+                    )}
+                    {lookupResult.membershipNumber && (
+                      <p>
+                        <strong>Membership #:</strong> {lookupResult.membershipNumber}
+                      </p>
+                    )}
+                    {lookupResult.email && (
+                      <p>
+                        <strong>Email:</strong> {lookupResult.email}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-2">
@@ -529,18 +712,6 @@ const CommitteeManagement: React.FC = () => {
                 )}
               </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="userId" className="text-sm font-medium">
-                  User ID (Optional)
-                </Label>
-                <Input
-                  id="userId"
-                  name="userId"
-                  value={formData.userId}
-                  onChange={handleInputChange}
-                  placeholder="Link to existing user account"
-                />
-              </div>
             </div>
 
             {error && <div className="text-red-500 text-sm">{error}</div>}

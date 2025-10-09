@@ -328,7 +328,7 @@ const lookupMemberByEmployeeId = asyncHandler(async (req, res) => {
   const normalizedEmployeeId = employeeId.trim().toLowerCase();
 
   const user = await User.findOne({ employeeId: normalizedEmployeeId }).select(
-    "username surname email mobileNumber membershipNumber registrationNumber profilePic membershipStatus role address province district municipality wardNumber tole"
+    "username surname email mobileNumber membershipNumber registrationNumber employeeId profilePic membershipStatus role address province district municipality wardNumber tole"
   );
 
   if (!user) {
