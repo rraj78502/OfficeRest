@@ -12,6 +12,8 @@ const {
   checkFieldAvailabilityController,
   declineMembershipController,
   lookupMemberByEmployeeId,
+  bulkImportMembersController,
+  exportMembersController,
 } = require("../controller/userController");
 const verifyJWT = require("../middleware/authMiddleware");
 const verifyAdmin = require("../middleware/verifyAdmin");
@@ -58,6 +60,8 @@ router.post("/forgot-password/reset", async (req, res, next) => {
 });
 router.get("/check-availability", checkFieldAvailabilityController);
 router.get("/lookup", verifyJWT, verifyAdmin, lookupMemberByEmployeeId);
+router.post("/bulk-import", verifyJWT, verifyAdmin, bulkImportMembersController);
+router.get("/export", verifyJWT, verifyAdmin, exportMembersController);
 
 // Protected routes
 router.post("/logout", logoutUserController);

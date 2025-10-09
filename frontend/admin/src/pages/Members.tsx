@@ -22,6 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import axios, { AxiosError } from "axios";
+import * as XLSX from "xlsx";
+import { Download, Upload } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
@@ -104,6 +106,72 @@ const Members: React.FC = () => {
   // File state
   const [profilePic, setProfilePic] = useState<File | null>(null);
   const [additionalFile, setAdditionalFile] = useState<File | null>(null);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [parsedImportRows, setParsedImportRows] = useState<any[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+
+  const safeString = (value: any): string => {
+    if (value === undefined || value === null) return "";
+    if (typeof value === "number") return String(value);
+    if (typeof value === "string") return value.trim();
+    return String(value).trim();
+  };
+
+  const getExcelValue = (row: Record<string, any>, keys: string[]): string => {
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        const value = safeString(row[key]);
+        if (value) return value;
+      }
+    }
+    return "";
+  };
+
+  const mapExcelRowToPayload = (row: Record<string, any>) => {
+    const employeeId = getExcelValue(row, ["employeeId", "Employee ID", "EmployeeId"]);
+    const email = getExcelValue(row, ["email", "Email"]);
+    let username = getExcelValue(row, ["username", "First Name", "Given Name"]);
+    let surname = getExcelValue(row, ["surname", "Last Name", "Family Name"]);
+    const fullName = getExcelValue(row, ["name", "Name", "Full Name"]);
+
+    if ((!username || !surname) && fullName) {
+      const nameParts = fullName.split(/\s+/).filter(Boolean);
+      if (!username && nameParts.length) {
+        username = nameParts.shift() || "";
+      }
+      if (!surname && nameParts.length) {
+        surname = nameParts.join(" ");
+      }
+    }
+
+    return {
+      employeeId,
+      username,
+      surname,
+      address: getExcelValue(row, ["address", "Address"]),
+      province: getExcelValue(row, ["province", "Province"]),
+      district: getExcelValue(row, ["district", "District"]),
+      municipality: getExcelValue(row, ["municipality", "Municipality"]),
+      wardNumber: getExcelValue(row, ["wardNumber", "Ward", "Ward Number"]),
+      tole: getExcelValue(row, ["tole", "Tole"]),
+      telephoneNumber: getExcelValue(row, ["telephoneNumber", "Telephone", "Telephone Number"]),
+      mobileNumber: getExcelValue(row, ["mobileNumber", "Mobile", "Mobile Number"]),
+      dob: getExcelValue(row, ["dob", "DOB", "Date of Birth"]),
+      postAtRetirement: getExcelValue(row, ["postAtRetirement", "Post At Retirement"]),
+      pensionLeaseNumber: getExcelValue(row, ["pensionLeaseNumber", "Pension Lease Number"]),
+      office: getExcelValue(row, ["office", "Office"]),
+      serviceStartDate: getExcelValue(row, ["serviceStartDate", "Service Start Date"]),
+      serviceRetirementDate: getExcelValue(row, ["serviceRetirementDate", "Service Retirement Date"]),
+      dateOfFillUp: getExcelValue(row, ["dateOfFillUp", "Date Of Fill Up"]),
+      place: getExcelValue(row, ["place", "Place"]),
+      email,
+      role: getExcelValue(row, ["role", "Role"]) || "user",
+      password: getExcelValue(row, ["password", "Password"]),
+      membershipStatus: getExcelValue(row, ["membershipStatus", "Membership Status"]),
+    };
+  };
 
   // Validation function for form data
   const validateForm = () => {
@@ -288,6 +356,155 @@ const Members: React.FC = () => {
       } else if (name === "additionalFile") {
         setAdditionalFile(files[0]);
       }
+    }
+  };
+
+  const resetImportState = () => {
+    setImportFile(null);
+    setParsedImportRows([]);
+    setImportError("");
+    setImporting(false);
+  };
+
+  const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    resetImportState();
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+
+      if (!sheet) {
+        throw new Error("No worksheet found in the uploaded file");
+      }
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
+        defval: "",
+        raw: false,
+      });
+
+      const mappedRows = rows
+        .map((row) => mapExcelRowToPayload(row))
+        .filter((payload) =>
+          payload.employeeId &&
+          payload.email &&
+          payload.username &&
+          payload.surname
+        );
+
+      setImportFile(file);
+      setParsedImportRows(mappedRows);
+      if (mappedRows.length === 0) {
+        setImportError("No valid rows found. Ensure required columns are populated.");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to parse the selected file";
+      setImportError(message);
+    }
+  };
+
+  const handleImportSubmit = async () => {
+    if (!parsedImportRows.length) {
+      setImportError("No valid rows available for import.");
+      return;
+    }
+
+    try {
+      setImporting(true);
+      setImportError("");
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found. Please log in again.");
+      }
+
+      const response = await axios.post(
+        `${API_BASE_URL}/api/v1/user/bulk-import`,
+        { members: parsedImportRows },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-admin-frontend": "true",
+          },
+        }
+      );
+
+      const summary = response.data?.data || {};
+      toast({
+        title: "Import complete",
+        description: `Imported ${summary.imported || 0} members, ${summary.failed || 0} failed`,
+      });
+
+      resetImportState();
+      setIsImportDialogOpen(false);
+      fetchMembers();
+    } catch (error) {
+      const message =
+        error instanceof AxiosError
+          ? error.response?.data?.message || "Failed to import members"
+          : error instanceof Error
+          ? error.message
+          : "Failed to import members";
+      setImportError(message);
+      toast({
+        title: "Import failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExportMembers = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found. Please log in again.");
+      }
+
+      const response = await axios.get(`${API_BASE_URL}/api/v1/user/export`, {
+        params: { status: statusFilter === "all" ? undefined : statusFilter },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-admin-frontend": "true",
+        },
+        responseType: "blob",
+      });
+
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `members_export_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export started",
+        description: "The members list has been downloaded as an Excel file.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof AxiosError
+          ? error.response?.data?.message || "Failed to export members"
+          : error instanceof Error
+          ? error.message
+          : "Failed to export members";
+      toast({
+        title: "Export failed",
+        description: message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -629,15 +846,36 @@ const Members: React.FC = () => {
     <DashboardLayout>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Members</h1>
-        <Button
-          onClick={() => {
-            setIsEditMode(false);
-            setIsModalOpen(true);
-          }}
-          className="bg-gray-800 hover:bg-gray-700"
-        >
-          + Add Member
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExportMembers}
+            className="flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Export
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              resetImportState();
+              setIsImportDialogOpen(true);
+            }}
+            className="flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" /> Import
+          </Button>
+          <Button
+            onClick={() => {
+              setIsEditMode(false);
+              setIsModalOpen(true);
+            }}
+            className="bg-gray-800 hover:bg-gray-700"
+          >
+            + Add Member
+          </Button>
+        </div>
       </div>
 
       {/* Status Filter */}
@@ -737,6 +975,69 @@ const Members: React.FC = () => {
           </Table>
         </div>
       </Card>
+
+      <Dialog
+        open={isImportDialogOpen}
+        onOpenChange={(open) => {
+          setIsImportDialogOpen(open);
+          if (!open) {
+            resetImportState();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Import Members from Excel</DialogTitle>
+            <DialogDescription>
+              Upload an .xlsx file that includes the required columns. Rows missing essential data
+              will be skipped during import.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="memberImportFile">Upload .xlsx File</Label>
+              <Input
+                id="memberImportFile"
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportFileChange}
+              />
+              {importFile && (
+                <p className="text-xs text-gray-600">
+                  Selected file: <strong>{importFile.name}</strong>
+                </p>
+              )}
+              {importError && (
+                <p className="text-xs text-red-500">{importError}</p>
+              )}
+              {parsedImportRows.length > 0 && !importError && (
+                <p className="text-xs text-green-600">
+                  Detected {parsedImportRows.length} member record(s) ready for import.
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  resetImportState();
+                  setIsImportDialogOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleImportSubmit}
+                disabled={importing || parsedImportRows.length === 0}
+              >
+                {importing ? "Importing..." : "Import"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Member Dialog */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

@@ -4,10 +4,47 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { sendOTPController, verifyOTPController } = require("./otpController");
 const { v4: uuidv4 } = require("uuid");
+const XLSX = require("xlsx");
 const {validateUserFiles} = require("../utils/valiadateFiles");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const jwt = require("jsonwebtoken");
+
+const REQUIRED_MEMBER_FIELDS = [
+  "employeeId",
+  "username",
+  "surname",
+  "address",
+  "province",
+  "district",
+  "municipality",
+  "wardNumber",
+  "tole",
+  "telephoneNumber",
+  "mobileNumber",
+  "dob",
+  "postAtRetirement",
+  "pensionLeaseNumber",
+  "office",
+  "serviceStartDate",
+  "serviceRetirementDate",
+  "dateOfFillUp",
+  "place",
+  "email",
+];
+
+const sanitizeValue = (value) => {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value.trim();
+  return String(value).trim();
+};
+
+const generateMembershipIdentifiers = () => ({
+  membershipNumber: `MEM-${uuidv4().slice(0, 8).toUpperCase()}`,
+  registrationNumber: `REG-${uuidv4().slice(0, 8).toUpperCase()}`,
+});
+
+const generateRandomPassword = () => uuidv4().replace(/-/g, "").slice(0, 10);
 
 // Generate refresh and access tokens
 const generateAccessTokenAndRefreshToken = async (userId) => {
@@ -604,6 +641,157 @@ const declineMembershipController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Membership declined and user deleted successfully"));
 });
 
+const bulkImportMembersController = asyncHandler(async (req, res) => {
+  const { members } = req.body;
+
+  if (!Array.isArray(members) || members.length === 0) {
+    throw new ApiError(400, "No members provided for import");
+  }
+
+  const successes = [];
+  const failures = [];
+
+  for (let index = 0; index < members.length; index += 1) {
+    const rawMember = members[index] || {};
+
+    try {
+      const sanitizedMember = {};
+      for (const key of Object.keys(rawMember || {})) {
+        sanitizedMember[key] = sanitizeValue(rawMember[key]);
+      }
+
+      const missingFields = REQUIRED_MEMBER_FIELDS.filter(
+        (field) => !sanitizeValue(sanitizedMember[field])
+      );
+      if (missingFields.length > 0) {
+        throw new ApiError(
+          400,
+          `Missing required fields: ${missingFields.join(", ")}`
+        );
+      }
+
+      const password = sanitizeValue(sanitizedMember.password) || generateRandomPassword();
+      const normalizedRole = sanitizeValue(sanitizedMember.role).toLowerCase();
+      const role = ["user", "admin"].includes(normalizedRole)
+        ? normalizedRole
+        : "user";
+      const normalizedStatus = sanitizeValue(sanitizedMember.membershipStatus).toLowerCase();
+      const membershipStatus = ["pending", "approved"].includes(normalizedStatus)
+        ? normalizedStatus
+        : "pending";
+
+      const identifiers = generateMembershipIdentifiers();
+
+      const user = new User({
+        employeeId: sanitizeValue(sanitizedMember.employeeId).toLowerCase(),
+        username: sanitizeValue(sanitizedMember.username),
+        surname: sanitizeValue(sanitizedMember.surname),
+        address: sanitizeValue(sanitizedMember.address),
+        province: sanitizeValue(sanitizedMember.province),
+        district: sanitizeValue(sanitizedMember.district),
+        municipality: sanitizeValue(sanitizedMember.municipality),
+        wardNumber: sanitizeValue(sanitizedMember.wardNumber),
+        tole: sanitizeValue(sanitizedMember.tole),
+        telephoneNumber: sanitizeValue(sanitizedMember.telephoneNumber),
+        mobileNumber: sanitizeValue(sanitizedMember.mobileNumber),
+        dob: sanitizeValue(sanitizedMember.dob),
+        postAtRetirement: sanitizeValue(sanitizedMember.postAtRetirement),
+        pensionLeaseNumber: sanitizeValue(sanitizedMember.pensionLeaseNumber),
+        office: sanitizeValue(sanitizedMember.office),
+        serviceStartDate: sanitizeValue(sanitizedMember.serviceStartDate),
+        serviceRetirementDate: sanitizeValue(sanitizedMember.serviceRetirementDate),
+        dateOfFillUp: sanitizeValue(sanitizedMember.dateOfFillUp),
+        place: sanitizeValue(sanitizedMember.place),
+        email: sanitizeValue(sanitizedMember.email).toLowerCase(),
+        role,
+        membershipNumber: identifiers.membershipNumber,
+        registrationNumber: identifiers.registrationNumber,
+        membershipStatus,
+        password,
+        profilePic: sanitizeValue(sanitizedMember.profilePic),
+        files: [],
+      });
+
+      await user.save();
+
+      successes.push({
+        index,
+        employeeId: user.employeeId,
+        email: user.email,
+        id: user._id,
+      });
+    } catch (error) {
+      let message = error.message || "Unknown error";
+      if (error?.code === 11000 && error?.keyValue) {
+        const duplicateFields = Object.keys(error.keyValue).join(", ");
+        message = `Duplicate value for ${duplicateFields}`;
+      }
+      failures.push({ index, reason: message });
+    }
+  }
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      imported: successes.length,
+      failed: failures.length,
+      successes,
+      failures,
+    }, "Bulk import processed")
+  );
+});
+
+const exportMembersController = asyncHandler(async (req, res) => {
+  const { status } = req.query;
+  const filter = {};
+
+  if (status && status !== "all") {
+    filter.membershipStatus = status;
+  }
+
+  const members = await User.find(filter).lean();
+
+  const exportRows = members.map((member) => ({
+    "Employee ID": member.employeeId,
+    Name: `${member.username || ""} ${member.surname || ""}`.trim(),
+    Email: member.email,
+    Mobile: member.mobileNumber,
+    Telephone: member.telephoneNumber,
+    Province: member.province,
+    District: member.district,
+    Municipality: member.municipality,
+    Ward: member.wardNumber,
+    Tole: member.tole,
+    "Post at Retirement": member.postAtRetirement,
+    "Pension Lease Number": member.pensionLeaseNumber,
+    Office: member.office,
+    "Service Start Date": member.serviceStartDate,
+    "Service Retirement Date": member.serviceRetirementDate,
+    "Date Of Fill Up": member.dateOfFillUp,
+    Place: member.place,
+    "Membership Number": member.membershipNumber,
+    "Registration Number": member.registrationNumber,
+    Role: member.role,
+    Status: member.membershipStatus,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Members");
+
+  const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+
+  res.setHeader(
+    "Content-Disposition",
+    "attachment; filename=members_export.xlsx"
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+
+  return res.status(200).send(buffer);
+});
+
 module.exports = {
   registerUserController,
   generateAccessTokenAndRefreshToken,
@@ -618,6 +806,8 @@ module.exports = {
   checkFieldAvailabilityController,
   declineMembershipController,
   lookupMemberByEmployeeId,
+  bulkImportMembersController,
+  exportMembersController,
   // Forgot/Reset password controllers
   requestPasswordReset: asyncHandler(async (req, res) => {
     const { email } = req.body;
