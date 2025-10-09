@@ -207,7 +207,7 @@ const Members: React.FC = () => {
       );
 
       // Normalize members
-      const normalizedMembers: Member[] = response.data.data
+    const normalizedMembers: Member[] = (response.data.data || [])
         .filter((user: Member) => user.role === "user" || user.role === "admin")
         .map((user: Member) => ({
           _id: user._id,
