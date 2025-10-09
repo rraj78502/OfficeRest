@@ -91,12 +91,10 @@ const branchSchema = new mongoose.Schema(
         },
         name: {
           type: String,
-          required: [true, "Team member name is required"],
           trim: true,
         },
         position: {
           type: String,
-          required: [true, "Team member position is required"],
           trim: true,
         },
         experience: {

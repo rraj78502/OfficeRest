@@ -20,35 +20,27 @@ function buildMemberDisplayName(userDoc) {
 const createCommitteeMember = asyncHandler(async (req, res) => {
   const { name, role, bio, committeeTitle, startDate, endDate, userId } = req.body;
 
-  const requiredFields = { role, bio, committeeTitle, startDate, endDate, userId };
-  for (const [key, value] of Object.entries(requiredFields)) {
-    if (!value) {
-      throw new ApiError(400, `Field '${key}' is required`);
-    }
-  }
-
   const normalizedRole = typeof role === "string" ? role.trim() : "";
   const normalizedBio = typeof bio === "string" ? bio.trim() : "";
   const normalizedCommitteeTitle = typeof committeeTitle === "string" ? committeeTitle.trim() : "";
   const normalizedStartDate = typeof startDate === "string" ? startDate.trim() : "";
   const normalizedEndDate = typeof endDate === "string" ? endDate.trim() : "";
 
-  if (!normalizedRole || !normalizedBio || !normalizedCommitteeTitle || !normalizedStartDate || !normalizedEndDate) {
-    throw new ApiError(400, "Committee member details are incomplete");
-  }
-
-  const linkedUser = await User.findById(userId).select(
-    "username surname email profilePic membershipStatus"
-  );
-  if (!linkedUser) {
-    throw new ApiError(404, "Linked member not found");
-  }
-  if (linkedUser.membershipStatus !== "approved") {
-    throw new ApiError(400, "Member must be approved before being assigned to a committee");
+  let linkedUser = null;
+  if (userId) {
+    linkedUser = await User.findById(userId).select(
+      "username surname email profilePic membershipStatus"
+    );
+    if (!linkedUser) {
+      throw new ApiError(404, "Linked member not found");
+    }
+    if (linkedUser.membershipStatus !== "approved") {
+      throw new ApiError(400, "Member must be approved before being assigned to a committee");
+    }
   }
 
   // Upload profile picture to Cloudinary (if provided)
-  let profilePicUrl = linkedUser.profilePic || "";
+  let profilePicUrl = linkedUser?.profilePic || "";
   if (req.files && req.files.profilePic) {
     try {
       const profilePicResult = await uploadOnCloudinary(
@@ -65,15 +57,17 @@ const createCommitteeMember = asyncHandler(async (req, res) => {
     }
   }
 
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+
   const committeeMember = await CommitteeMember.create({
-    name: (typeof name === "string" && name.trim()) || buildMemberDisplayName(linkedUser),
-    role: normalizedRole,
-    bio: normalizedBio,
-    committeeTitle: normalizedCommitteeTitle,
-    startDate: normalizedStartDate,
-    endDate: normalizedEndDate,
-    profilePic: profilePicUrl,
-    userId: linkedUser._id,
+    name: normalizedName || (linkedUser ? buildMemberDisplayName(linkedUser) : undefined),
+    role: normalizedRole || undefined,
+    bio: normalizedBio || undefined,
+    committeeTitle: normalizedCommitteeTitle || undefined,
+    startDate: normalizedStartDate || undefined,
+    endDate: normalizedEndDate || undefined,
+    profilePic: profilePicUrl || undefined,
+    userId: linkedUser ? linkedUser._id : null,
   });
 
   return res
@@ -135,19 +129,26 @@ const updateCommitteeMember = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Committee member not found");
   }
 
-  const targetUserId = userId || committeeMember.userId?.toString();
-  if (!targetUserId) {
-    throw new ApiError(400, "Linked member is required");
-  }
+  let linkedUser = null;
+  const clearedUserIdValues = [null, undefined, "", "null", "undefined"];
 
-  const linkedUser = await User.findById(targetUserId).select(
-    "username surname email profilePic membershipStatus"
-  );
-  if (!linkedUser) {
-    throw new ApiError(404, "Linked member not found");
-  }
-  if (linkedUser.membershipStatus !== "approved") {
-    throw new ApiError(400, "Member must be approved before being assigned to a committee");
+  if (userId && !clearedUserIdValues.includes(userId)) {
+    linkedUser = await User.findById(userId).select(
+      "username surname email profilePic membershipStatus"
+    );
+    if (!linkedUser) {
+      throw new ApiError(404, "Linked member not found");
+    }
+    if (linkedUser.membershipStatus !== "approved") {
+      throw new ApiError(400, "Member must be approved before being assigned to a committee");
+    }
+    committeeMember.userId = linkedUser._id;
+  } else if (clearedUserIdValues.includes(userId)) {
+    committeeMember.userId = null;
+  } else if (committeeMember.userId) {
+    linkedUser = await User.findById(committeeMember.userId).select(
+      "username surname email profilePic membershipStatus"
+    );
   }
 
   // Update profile picture if provided
@@ -173,12 +174,11 @@ const updateCommitteeMember = asyncHandler(async (req, res) => {
     }
   }
 
-  if (!req.files?.profilePic && !committeeMember.profilePic && linkedUser.profilePic) {
+  if (!req.files?.profilePic && !committeeMember.profilePic && linkedUser?.profilePic) {
     committeeMember.profilePic = linkedUser.profilePic;
   }
 
   // Update fields
-  committeeMember.userId = linkedUser._id;
   const normalizedName = typeof name === "string" ? name.trim() : "";
   const normalizedRole = typeof role === "string" ? role.trim() : null;
   const normalizedBio = typeof bio === "string" ? bio.trim() : null;
@@ -186,7 +186,8 @@ const updateCommitteeMember = asyncHandler(async (req, res) => {
   const normalizedStartDate = typeof startDate === "string" ? startDate.trim() : null;
   const normalizedEndDate = typeof endDate === "string" ? endDate.trim() : null;
 
-  committeeMember.name = normalizedName || buildMemberDisplayName(linkedUser);
+  const fallbackDisplay = linkedUser ? buildMemberDisplayName(linkedUser) : committeeMember.name;
+  committeeMember.name = normalizedName || fallbackDisplay;
   if (normalizedRole) committeeMember.role = normalizedRole;
   if (normalizedBio) committeeMember.bio = normalizedBio;
   if (normalizedCommitteeTitle) committeeMember.committeeTitle = normalizedCommitteeTitle;

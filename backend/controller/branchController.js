@@ -32,39 +32,28 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
 
   return Promise.all(
     teamMembers.map(async (member, index) => {
-      if (!member || !member.userId) {
-        throw new ApiError(400, `Team member at position ${index + 1} must include userId`);
+      let linkedUser = null;
+      if (member && member.userId) {
+        linkedUser = await User.findById(member.userId).select(
+          "username surname email profilePic membershipStatus"
+        );
+        if (!linkedUser) {
+          throw new ApiError(404, `Linked member not found for team member at position ${index + 1}`);
+        }
+        if (linkedUser.membershipStatus !== "approved") {
+          throw new ApiError(400, "Team member must be an approved member");
+        }
       }
 
-      const linkedUser = await User.findById(member.userId).select(
-        "username surname email profilePic membershipStatus"
-      );
-      if (!linkedUser) {
-        throw new ApiError(404, `Linked member not found for team member at position ${index + 1}`);
-      }
-      if (linkedUser.membershipStatus !== "approved") {
-        throw new ApiError(400, "Team member must be an approved member");
-      }
-
-      const normalizedPosition = typeof member.position === "string" ? member.position.trim() : "";
-      if (!normalizedPosition) {
-        throw new ApiError(400, `Position is required for team member at position ${index + 1}`);
-      }
-
-      const normalizedName = typeof member.name === "string" && member.name.trim()
-        ? member.name.trim()
-        : buildMemberDisplayName(linkedUser);
-      if (!normalizedName) {
-        throw new ApiError(400, `Display name could not be resolved for team member at position ${index + 1}`);
-      }
-
-      const normalizedExperience = typeof member.experience === "string" ? member.experience.trim() : "";
+      const normalizedName = typeof member?.name === "string" ? member.name.trim() : "";
+      const normalizedPosition = typeof member?.position === "string" ? member.position.trim() : "";
+      const normalizedExperience = typeof member?.experience === "string" ? member.experience.trim() : "";
 
       const existing = member._id && existingById[member._id] ? existingById[member._id] : null;
       let profilePicUrl =
         (typeof member.profilePic === "string" && member.profilePic.trim()) ||
         (existing && existing.profilePic) ||
-        linkedUser.profilePic ||
+        linkedUser?.profilePic ||
         "";
 
       if (files && files[`teamMember_${index}_profilePic`]) {
@@ -91,11 +80,11 @@ const normalizeTeamMembers = async (teamMembers, files, existingMembers = []) =>
       }
 
       const normalizedMember = {
-        userId: linkedUser._id,
-        name: normalizedName,
-        position: normalizedPosition,
-        experience: normalizedExperience,
-        profilePic: profilePicUrl,
+        userId: linkedUser ? linkedUser._id : existing?.userId ?? null,
+        name: normalizedName || existing?.name || (linkedUser ? buildMemberDisplayName(linkedUser) : undefined),
+        position: normalizedPosition || existing?.position,
+        experience: normalizedExperience || existing?.experience,
+        profilePic: profilePicUrl || existing?.profilePic,
       };
 
       if (member._id) {

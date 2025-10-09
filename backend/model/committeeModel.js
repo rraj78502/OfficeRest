@@ -4,12 +4,10 @@ const committeeMemberSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, "Name is required"],
       trim: true,
     },
     role: {
       type: String,
-      required: [true, "Role is required"],
       enum: [
         "Chairman",
         "Vice Chairman",
@@ -22,21 +20,17 @@ const committeeMemberSchema = new mongoose.Schema(
     },
     bio: {
       type: String,
-      required: [true, "Bio is required"],
       trim: true,
     },
     committeeTitle: {
       type: String,
-      required: [true, "Committee title is required"],
       trim: true,
     },
     startDate: {
       type: String, // e.g., "2064/4/16"
-      required: [true, "Start date is required"],
     },
     endDate: {
       type: String, // e.g., "2065/5/27" or "Current"
-      required: [true, "End date is required"],
     },
     profilePic: {
       type: String, // URL for profile picture (Cloudinary)
@@ -45,7 +39,7 @@ const committeeMemberSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: [true, "Linked member is required"],
+      default: null,
       index: true,
     },
   },
