@@ -437,8 +437,25 @@ const Members: React.FC = () => {
       const summary = response.data?.data || {};
       toast({
         title: "Import complete",
-        description: `Imported ${summary.imported || 0} members, ${summary.failed || 0} failed`,
+        description: `Imported ${summary.imported || 0} member(s), ${summary.failed || 0} failed`,
       });
+
+      if (Array.isArray(summary.failures) && summary.failures.length) {
+        summary.failures.slice(0, 5).forEach((failure: { index: number; reason: string }) => {
+          toast({
+            title: `Row ${failure.index + 1} failed`,
+            description: failure.reason,
+            variant: "destructive",
+          });
+        });
+        if (summary.failures.length > 5) {
+          toast({
+            title: "Additional failures",
+            description: `${summary.failures.length - 5} more row(s) failed.`,
+            variant: "destructive",
+          });
+        }
+      }
 
       resetImportState();
       setIsImportDialogOpen(false);
