@@ -69,7 +69,7 @@ function Membership() {
           message: response.data.data.message
         }
       }));
-    } catch (error) {
+    } catch {
       setFieldValidation(prev => ({
         ...prev,
         [field]: {

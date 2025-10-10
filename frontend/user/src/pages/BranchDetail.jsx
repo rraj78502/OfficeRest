@@ -98,6 +98,7 @@ function BranchDetail() {
   // Prepare the branch data in the format expected by BranchTemplate
   const branchData = {
     name: branch.name,
+    slug: branch.slug,
     address: branch.address,
     mapLink: branch.mapLink,
     description: branch.description,

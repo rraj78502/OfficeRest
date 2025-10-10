@@ -10,6 +10,7 @@ const api_base_url = import.meta.env.VITE_API_URL;
 function BranchTemplate({ branchData }) {
   const {
     name,
+    slug,
     address,
     mapLink,
     description,
@@ -30,9 +31,21 @@ function BranchTemplate({ branchData }) {
     const fetchCarouselImages = async () => {
       try {
         setCarouselLoading(true);
-        const branchName = name.toLowerCase();
+        const branchKey =
+          slug ||
+          (name
+            ? name
+                .toLowerCase()
+                .replace(/\s+/g, "")
+                .replace(/[^a-z0-9]/g, "")
+            : "");
+        if (!branchKey) {
+          console.warn("Branch carousel lookup skipped: missing branch identifier");
+          setCarouselLoading(false);
+          return;
+        }
         const response = await axios.get(
-          `${api_base_url}/api/v1/carousel/get-all-carousels?type=branch&branch=${branchName}`,
+          `${api_base_url}/api/v1/carousel/get-all-carousels?type=branch&branch=${branchKey}`,
           { withCredentials: true }
         );
         
@@ -57,7 +70,7 @@ function BranchTemplate({ branchData }) {
     if (name) {
       fetchCarouselImages();
     }
-  }, [name]);
+  }, [name, slug]);
 
   // Start slideshow after 5s, then cycle every few seconds
   useEffect(() => {

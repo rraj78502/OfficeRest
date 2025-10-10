@@ -13,15 +13,6 @@ import Login from "./pages/LoginPage";
 import Profile from "./pages/profile";
 import AllCommittees from "./pages/AllCommittees";
 import BranchDetail from "./pages/BranchDetail";
-import {
-  CentralBranch,
-  Province1Branch,
-  MadheshBranch,
-  GandakiBranch,
-  LumbiniBranch,
-  KarnaliBranch,
-  SudurpashchimBranch,
-} from "./pages/branches/index.js";
 
 function App() {
   return (
@@ -35,14 +26,7 @@ function App() {
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/membership" element={<Membership />} />
           <Route path="/branches" element={<Branches />} />
-          <Route path="/branches/central" element={<CentralBranch />} />
-          <Route path="/branches/province1" element={<Province1Branch />} />
-          <Route path="/branches/madhesh" element={<MadheshBranch />} />
-          <Route path="/branches/gandaki" element={<GandakiBranch />} />
-          <Route path="/branches/lumbini" element={<LumbiniBranch />} />
-          <Route path="/branches/karnali" element={<KarnaliBranch />} />
-          <Route path="/branches/sudurpashchim" element={<SudurpashchimBranch />} />
-          {/* Legacy route for old dynamic branch detail */}
+          <Route path="/branches/:branchName" element={<BranchDetail />} />
           <Route path="/branch" element={<Branches />} />
           <Route path="/branch/:branchName" element={<BranchDetail />} />
           <Route path="/login" element={<Login />} />
