@@ -18,7 +18,8 @@ const carouselSchema = new mongoose.Schema(
       required: function() {
         return this.type === "branch";
       },
-      enum: ["central", "gandaki", "karnali", "lumbini", "madhesh", "province1", "sudurpashchim"],
+      trim: true,
+      lowercase: true,
     },
     images: [
       {

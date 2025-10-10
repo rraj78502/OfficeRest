@@ -1,5 +1,6 @@
 const asyncHandler = require("../utils/asyncHandler");
 const Carousel = require("../model/carouselModel");
+const Branch = require("../model/branchModel");
 const { uploadFileWithFolderLogic, deleteFileFromCloudinary } = require("../helper/cloudinaryHepler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
@@ -14,8 +15,28 @@ const uploadCarouselController = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Title and type are required");
   }
 
-  if (type === "branch" && !branch) {
-    throw new ApiError(400, "Branch is required for branch type carousel");
+  let normalizedBranch;
+  if (type === "branch") {
+    if (!branch) {
+      throw new ApiError(400, "Branch is required for branch type carousel");
+    }
+
+    const rawBranch = branch.toString().trim().toLowerCase();
+    if (!rawBranch) {
+      throw new ApiError(400, "Branch identifier cannot be empty");
+    }
+
+    let branchRecord = await Branch.findBySlug(rawBranch);
+
+    if (!branchRecord && mongoose.Types.ObjectId.isValid(rawBranch)) {
+      branchRecord = await Branch.findById(rawBranch);
+    }
+
+    if (!branchRecord) {
+      throw new ApiError(404, "Branch not found for carousel");
+    }
+
+    normalizedBranch = branchRecord.slug;
   }
 
   // Validate file uploads
@@ -57,14 +78,18 @@ const uploadCarouselController = asyncHandler(async (req, res) => {
   }
 
   // Get the next order number
-  const lastCarousel = await Carousel.findOne({ type, branch }).sort({ order: -1 });
+  const query = { type };
+  if (normalizedBranch) {
+    query.branch = normalizedBranch;
+  }
+  const lastCarousel = await Carousel.findOne(query).sort({ order: -1 });
   const order = lastCarousel ? lastCarousel.order + 1 : 1;
 
   // Save carousel to MongoDB
   const carousel = await Carousel.create({
     title,
     type,
-    branch: type === "branch" ? branch : undefined,
+    branch: normalizedBranch,
     images,
     order,
   });
@@ -82,7 +107,9 @@ const getAllCarouselsController = asyncHandler(async (req, res) => {
   
   let filter = { isActive: true };
   if (type) filter.type = type;
-  if (branch) filter.branch = branch;
+  if (branch) {
+    filter.branch = branch.toString().trim().toLowerCase();
+  }
 
   const carousels = await Carousel.find(filter).sort({ order: 1, createdAt: -1 });
 

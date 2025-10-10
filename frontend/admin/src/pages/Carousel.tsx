@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,22 @@ interface CarouselData {
   createdAt: string;
 }
 
+interface BranchOption {
+  value: string;
+  label: string;
+}
+
+interface BranchSummary {
+  slug: string;
+  name?: string;
+}
+
+interface BranchListResponse {
+  success: boolean;
+  data: BranchSummary[];
+  message: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 const carouselTypes = [
@@ -35,29 +51,26 @@ const carouselTypes = [
   { value: "branch", label: "Branch Page" },
 ];
 
-const branches = [
-  { value: "central", label: "Central Branch" },
-  { value: "gandaki", label: "Gandaki Branch" },
-  { value: "karnali", label: "Karnali Branch" },
-  { value: "lumbini", label: "Lumbini Branch" },
-  { value: "madhesh", label: "Madhesh Branch" },
-  { value: "province1", label: "Province 1 Branch" },
-  { value: "sudurpashchim", label: "Sudurpashchim Branch" },
-];
-
 const Carousel = () => {
   const [carousels, setCarousels] = useState<CarouselData[]>([]);
   const [filter, setFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([]);
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch carousels from backend
-  useEffect(() => {
-    fetchCarousels();
-  }, []);
+  const handleApiError = useCallback((error: unknown, defaultMessage: string) => {
+    const errorMessage = axios.isAxiosError(error)
+      ? error.response?.data?.message || defaultMessage
+      : defaultMessage;
+    toast({
+      title: "Error",
+      description: errorMessage,
+      variant: "destructive",
+    });
+  }, [toast]);
 
-  const fetchCarousels = async () => {
+  const fetchCarousels = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await axios.get(`${API_BASE_URL}/api/v1/carousel/get-all-carousels`);
@@ -67,18 +80,45 @@ const Carousel = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [handleApiError]);
 
-  const handleApiError = (error: unknown, defaultMessage: string) => {
-    const errorMessage = axios.isAxiosError(error)
-      ? error.response?.data?.message || defaultMessage
-      : defaultMessage;
-    toast({
-      title: "Error",
-      description: errorMessage,
-      variant: "destructive",
-    });
-  };
+  const fetchBranchOptions = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in again to manage branch carousels.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await axios.get<BranchListResponse>(`${API_BASE_URL}/api/v1/branches`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-admin-frontend': 'true',
+        },
+      });
+
+      const branchList = response.data?.data ?? [];
+
+      const options: BranchOption[] = branchList.map((branch) => ({
+        value: branch.slug,
+        label: branch.name ? `${branch.name} Branch` : branch.slug,
+      }));
+
+      options.sort((a, b) => a.label.localeCompare(b.label));
+      setBranchOptions(options);
+    } catch (error) {
+      handleApiError(error, "Failed to fetch branches");
+    }
+  }, [handleApiError, toast]);
+
+  useEffect(() => {
+    fetchCarousels();
+    fetchBranchOptions();
+  }, [fetchCarousels, fetchBranchOptions]);
 
   const handleDeleteImage = async (id: string, imageId: string) => {
     if (!window.confirm('Are you sure you want to delete this image?')) return;
@@ -194,7 +234,7 @@ const Carousel = () => {
       return;
     }
 
-    if (type === 'branch' && !branch) {
+    if (type === 'branch' && !branch?.trim()) {
       toast({
         title: "Validation Error",
         description: "Please select a branch for branch carousel",
@@ -209,7 +249,8 @@ const Carousel = () => {
       files.forEach((file) => formData.append('images', file));
       formData.append('title', title);
       formData.append('type', type);
-      if (branch) formData.append('branch', branch);
+      const normalizedBranch = branch ? branch.trim().toLowerCase() : undefined;
+      if (normalizedBranch) formData.append('branch', normalizedBranch);
 
       const response = await axios.post(`${API_BASE_URL}/api/v1/carousel/upload-carousel`, formData, {
         headers: {
@@ -218,7 +259,7 @@ const Carousel = () => {
         },
       });
 
-      setCarousels([response.data.data, ...carousels]);
+      setCarousels((prevCarousels) => [response.data.data, ...prevCarousels]);
       toast({
         title: "Success",
         description: `Successfully uploaded carousel with ${response.data.data.images.length} image(s)`,
@@ -245,7 +286,7 @@ const Carousel = () => {
           {/* Upload Form */}
           <Card className="p-6 lg:w-1/3 space-y-4">
             <h2 className="text-xl font-semibold">Upload New Carousel</h2>
-            <UploadForm onSubmit={handleUploadCarousel} isLoading={isLoading} />
+            <UploadForm onSubmit={handleUploadCarousel} isLoading={isLoading} branchOptions={branchOptions} />
           </Card>
 
           {/* Carousel Section */}
@@ -292,7 +333,7 @@ const Carousel = () => {
                           <h3 className="font-semibold text-lg">{carousel.title}</h3>
                           <p className="text-sm text-gray-500">
                             Type: {carousel.type === 'home' ? 'Home Page' : 'Branch Page'}
-                            {carousel.branch && ` - ${branches.find(b => b.value === carousel.branch)?.label}`}
+                            {carousel.branch && ` - ${(branchOptions.find((b) => b.value === carousel.branch)?.label) || carousel.branch}`}
                           </p>
                           <p className="text-sm text-gray-500">
                             Status: <span className={carousel.isActive ? 'text-green-600' : 'text-red-600'}>
@@ -364,9 +405,11 @@ const Carousel = () => {
 const UploadForm = ({
   onSubmit,
   isLoading,
+  branchOptions,
 }: {
   onSubmit: (e: React.FormEvent, files: File[], title: string, type: string, branch?: string) => void;
   isLoading: boolean;
+  branchOptions: BranchOption[];
 }) => {
   const [title, setTitle] = useState('');
   const [type, setType] = useState('home');
@@ -374,6 +417,12 @@ const UploadForm = ({
   const [files, setFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (type === 'branch' && !branch && branchOptions.length > 0) {
+      setBranch(branchOptions[0].value);
+    }
+  }, [type, branch, branchOptions]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -439,7 +488,15 @@ const UploadForm = ({
 
       <div className="space-y-2">
         <Label htmlFor="type">Carousel Type</Label>
-        <Select value={type} onValueChange={setType}>
+        <Select
+          value={type}
+          onValueChange={(value) => {
+            setType(value);
+            if (value !== 'branch') {
+              setBranch('');
+            }
+          }}
+        >
           <SelectTrigger id="type">
             <SelectValue placeholder="Select type" />
           </SelectTrigger>
@@ -457,15 +514,21 @@ const UploadForm = ({
         <div className="space-y-2">
           <Label htmlFor="branch">Branch</Label>
           <Select value={branch} onValueChange={setBranch}>
-            <SelectTrigger id="branch">
-              <SelectValue placeholder="Select branch" />
+            <SelectTrigger id="branch" disabled={branchOptions.length === 0}>
+              <SelectValue placeholder={branchOptions.length ? "Select branch" : "No branches available"} />
             </SelectTrigger>
             <SelectContent>
-              {branches.map((branchOption) => (
-                <SelectItem key={branchOption.value} value={branchOption.value}>
-                  {branchOption.label}
+              {branchOptions.length === 0 ? (
+                <SelectItem value="" disabled>
+                  No branches found
                 </SelectItem>
-              ))}
+              ) : (
+                branchOptions.map((branchOption) => (
+                  <SelectItem key={branchOption.value} value={branchOption.value}>
+                    {branchOption.label}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -507,7 +570,11 @@ const UploadForm = ({
         </div>
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading || files.length === 0}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={isLoading || files.length === 0 || (type === 'branch' && !branch)}
+      >
         <Upload className="h-4 w-4 mr-2" />
         {isLoading ? 'Uploading...' : `Upload Carousel with ${files.length} Image${files.length > 1 ? 's' : ''}`}
       </Button>
