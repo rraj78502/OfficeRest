@@ -3,10 +3,37 @@ import axios from "axios";
 import { FaUsers } from "react-icons/fa";
 import { toast } from "react-toastify";
 
+const formatDateLabel = (value, fallback) => {
+  if (!value) return fallback;
+  const trimmed = value.toString().trim();
+
+  if (!trimmed) return fallback;
+  if (trimmed.toLowerCase() === "current") return "Current";
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  return trimmed;
+};
+
+const buildTenureLabel = (member) => {
+  const startLabel = formatDateLabel(member.startDate, "Start date not set");
+  const endLabel = formatDateLabel(member.endDate, "Present");
+  return `${startLabel} - ${endLabel}`;
+};
+
 function AllCommittees() {
-  const [selectedYear, setSelectedYear] = useState("All Years");
+  const [selectedCommittee, setSelectedCommittee] = useState("All");
+  const [selectedTenure, setSelectedTenure] = useState("All");
   const [committees, setCommittees] = useState([]);
-  const [yearOptions, setYearOptions] = useState(["All Years"]);
+  const [committeeOptions, setCommitteeOptions] = useState(["All"]);
+  const [tenureOptions, setTenureOptions] = useState(["All"]);
   const [allMembers, setAllMembers] = useState([]);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -32,8 +59,18 @@ function AllCommittees() {
         setAllMembers(members);
 
         // Extract unique committee titles
-        const titles = [...new Set(members.map((m) => m.committeeTitle))];
-        setYearOptions(["All Years", ...titles]);
+        const titles = [...new Set(members.map((m) => m.committeeTitle).filter(Boolean))];
+        setCommitteeOptions(["All", ...titles]);
+
+        // Extract unique tenures (full start-end strings)
+        const tenures = [
+          ...new Set(
+            members
+              .map((member) => buildTenureLabel(member))
+              .filter(Boolean)
+          ),
+        ];
+        setTenureOptions(["All", ...tenures]);
       } catch (error) {
         toast.error("Failed to load committee members. Please try again later.");
         console.error("Error fetching committee members:", error);
@@ -42,15 +79,21 @@ function AllCommittees() {
     fetchData();
   }, []);
 
-  // Filter/group members whenever selectedYear changes
+  // Filter/group members whenever filters change
   useEffect(() => {
     if (!allMembers.length) return;
 
-    // Filter by selected year
-    const filtered =
-      selectedYear === "All Years"
+    // Filter by committee title
+    const filteredByCommittee =
+      selectedCommittee === "All"
         ? allMembers
-        : allMembers.filter((m) => m.committeeTitle === selectedYear);
+        : allMembers.filter((m) => m.committeeTitle === selectedCommittee);
+
+    // Filter by tenure range (start-end string)
+    const filtered =
+      selectedTenure === "All"
+        ? filteredByCommittee
+        : filteredByCommittee.filter((member) => buildTenureLabel(member) === selectedTenure);
 
     // Group by committeeTitle
     const groupedCommittees = filtered.reduce((acc, member) => {
@@ -67,24 +110,41 @@ function AllCommittees() {
     }, {});
 
     setCommittees(Object.values(groupedCommittees));
-  }, [selectedYear, allMembers]);
+  }, [selectedCommittee, selectedTenure, allMembers]);
 
   return (
     <div className="px-6 py-16 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold text-center mb-12">All Working Committees</h1>
-        <div className="mb-12 flex justify-center">
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(e.target.value)}
-            className="border border-gray-300 rounded-lg p-3 text-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-          >
-            {yearOptions.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+        <div className="mb-12 flex flex-col gap-4 md:flex-row md:items-center md:justify-center">
+          <div className="flex flex-col">
+            <label className="mb-1 text-sm font-semibold text-gray-600">Committee</label>
+            <select
+              value={selectedCommittee}
+              onChange={(e) => setSelectedCommittee(e.target.value)}
+              className="border border-gray-300 rounded-lg p-3 text-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              {committeeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <label className="mb-1 text-sm font-semibold text-gray-600">Tenure</label>
+            <select
+              value={selectedTenure}
+              onChange={(e) => setSelectedTenure(e.target.value)}
+              className="border border-gray-300 rounded-lg p-3 text-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              {tenureOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         {committees.map((committee) => (
           <section key={committee.title} className="mb-16">
