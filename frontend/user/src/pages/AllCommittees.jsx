@@ -3,28 +3,43 @@ import axios from "axios";
 import { FaUsers } from "react-icons/fa";
 import { toast } from "react-toastify";
 
-const formatDateLabel = (value, fallback) => {
-  if (!value) return fallback;
-  const trimmed = value.toString().trim();
+const normalizeDateToken = (token) => {
+  if (!token && token !== 0) return null;
+  const cleaned = token.toString().trim();
+  if (!cleaned) return null;
+  if (/^\d+$/.test(cleaned)) {
+    return cleaned.padStart(2, "0");
+  }
+  // Fall back to original token for non-numeric segments (e.g., Nepali month names)
+  return cleaned;
+};
 
-  if (!trimmed) return fallback;
+const buildIsoLikeDate = (value) => {
+  if (!value) return null;
+  const trimmed = value.toString().trim();
+  if (!trimmed) return null;
   if (trimmed.toLowerCase() === "current") return "Current";
 
+  // Attempt ISO parsing first; fallback to manual token parsing
   const parsed = new Date(trimmed);
   if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    const year = parsed.getFullYear();
+    const month = (parsed.getMonth() + 1).toString().padStart(2, "0");
+    const day = parsed.getDate().toString().padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const segments = trimmed.split(/[-/]/).map(normalizeDateToken).filter(Boolean);
+  if (segments.length === 3) {
+    return `${segments[0]}-${segments[1]}-${segments[2]}`;
   }
 
   return trimmed;
 };
 
 const buildTenureLabel = (member) => {
-  const startLabel = formatDateLabel(member.startDate, "Start date not set");
-  const endLabel = formatDateLabel(member.endDate, "Present");
+  const startLabel = buildIsoLikeDate(member.startDate) || "Start date not set";
+  const endLabel = buildIsoLikeDate(member.endDate) || "Present";
   return `${startLabel} - ${endLabel}`;
 };
 
