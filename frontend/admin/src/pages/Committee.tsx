@@ -51,7 +51,6 @@ interface FormData {
   committeeTitle: string;
   startDate: string;
   endDate: string;
-  profilePic: File | null;
   userId: string;
 }
 
@@ -76,7 +75,6 @@ const CommitteeManagement: React.FC = () => {
     committeeTitle: "",
     startDate: "",
     endDate: "",
-    profilePic: null,
     userId: "",
   });
   const [employeeIdInput, setEmployeeIdInput] = useState("");
@@ -162,6 +160,13 @@ const CommitteeManagement: React.FC = () => {
     ? committees 
     : committees.filter(member => member.committeeTitle === titleFilter);
 
+  const previewProfilePic =
+    lookupResult?.profilePic ||
+    (isEditMode && currentMember ? computeProfilePic(currentMember) : undefined);
+  const previewDisplayName =
+    (lookupResult && buildMemberDisplayName(lookupResult)) ||
+    (isEditMode && currentMember ? computeDisplayName(currentMember) : formData.name);
+
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -177,16 +182,6 @@ const CommitteeManagement: React.FC = () => {
       ...formData,
       [field]: value,
     });
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { files } = e.target;
-    if (files && files[0]) {
-      setFormData({
-        ...formData,
-        profilePic: files[0],
-      });
-    }
   };
 
   const handleMemberLookup = async () => {
@@ -249,7 +244,6 @@ const CommitteeManagement: React.FC = () => {
       committeeTitle: member.committeeTitle || "",
       startDate: member.startDate || "",
       endDate: member.endDate || "",
-      profilePic: null,
       userId:
         (linked?._id || (typeof member.userId === "string" ? member.userId : "")) ?? "",
     });
@@ -280,10 +274,6 @@ const CommitteeManagement: React.FC = () => {
       if (formData.userId && formData.userId.trim()) {
         data.append("userId", formData.userId.trim());
       }
-      if (formData.profilePic) {
-        data.append("profilePic", formData.profilePic);
-      }
-
       if (isEditMode && currentMember) {
         await axios.put(
           `${API_BASE_URL}/api/v1/committee-members/${currentMember._id}`,
@@ -374,7 +364,6 @@ const CommitteeManagement: React.FC = () => {
       committeeTitle: "",
       startDate: "",
       endDate: "",
-      profilePic: null,
       userId: "",
     });
     setCurrentMember(null);
@@ -415,7 +404,6 @@ const CommitteeManagement: React.FC = () => {
               committeeTitle: "",
               startDate: "",
               endDate: "",
-              profilePic: null,
               userId: "",
             });
             setEmployeeIdInput("");
@@ -690,25 +678,24 @@ const CommitteeManagement: React.FC = () => {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="profilePic" className="text-sm font-medium">
-                  Profile Picture
-                </Label>
-                <Input
-                  id="profilePic"
-                  name="profilePic"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                />
-                {isEditMode && currentMember?.profilePic && (
-                  <a
-                    href={currentMember.profilePic}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 text-sm"
-                  >
-                    View Current Profile Picture
-                  </a>
+                <Label className="text-sm font-medium">Profile Picture</Label>
+                {previewProfilePic ? (
+                  <div className="flex items-center gap-3 rounded-md border bg-gray-50 p-3">
+                    <img
+                      src={previewProfilePic}
+                      alt={previewDisplayName || "Committee member"}
+                      className="h-16 w-16 rounded-full object-cover"
+                    />
+                    <p className="text-sm text-gray-600">
+                      This photo is pulled from the linked member profile. Update the member&apos;s
+                      profile to change it.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-3 text-sm text-gray-500">
+                    Link a registered member to reuse their existing profile picture. If no picture
+                    is available, initials will be shown automatically.
+                  </p>
                 )}
               </div>
 
