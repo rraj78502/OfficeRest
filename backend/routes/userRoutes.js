@@ -37,7 +37,7 @@ router.post("/verify-otp", verifyUserOTPLogin);
 router.post("/forgot-password/request", async (req, res, next) => {
   try {
     const { requestPasswordReset } = require("../controller/userController");
-    await requestPasswordReset(req, res);
+    await requestPasswordReset(req, res, next);
   } catch (err) {
     next(err);
   }
@@ -45,7 +45,7 @@ router.post("/forgot-password/request", async (req, res, next) => {
 router.post("/forgot-password/verify", async (req, res, next) => {
   try {
     const { verifyPasswordResetOTP } = require("../controller/userController");
-    await verifyPasswordResetOTP(req, res);
+    await verifyPasswordResetOTP(req, res, next);
   } catch (err) {
     next(err);
   }
@@ -53,7 +53,7 @@ router.post("/forgot-password/verify", async (req, res, next) => {
 router.post("/forgot-password/reset", async (req, res, next) => {
   try {
     const { resetPasswordController } = require("../controller/userController");
-    await resetPasswordController(req, res);
+    await resetPasswordController(req, res, next);
   } catch (err) {
     next(err);
   }
