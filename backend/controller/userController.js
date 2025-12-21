@@ -9,6 +9,7 @@ const {validateUserFiles} = require("../utils/valiadateFiles");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const jwt = require("jsonwebtoken");
+const OTP = require("../model/otpModel");
 
 const REQUIRED_MEMBER_FIELDS = [
   "employeeId",
@@ -827,37 +828,11 @@ module.exports = {
         .json(new ApiResponse(200, {}, "If the account exists, an OTP has been sent"));
     }
 
-    const enableEmailFallback = process.env.ENABLE_SMS_FALLBACK_TO_EMAIL === 'true' || (process.env.NODE_ENV !== 'production');
+    const canUseEmail = Boolean(user.email);
+    const canUseSms = Boolean(user.mobileNumber);
 
-    // Prefer SMS in production when mobile is available; allow email fallback in dev or when enabled
-    if (user.mobileNumber) {
-      try {
-        const { token, message } = await sendOTPController({
-          identifier: user.mobileNumber,
-          deliveryMethod: "sms",
-        });
-  
-        return res.status(200).json(
-          new ApiResponse(200, { token, deliveryMethod: "sms" }, message || "OTP sent via SMS")
-        );
-      } catch (error) {
-        if (enableEmailFallback && user.email) {
-          // Fallback to email OTP
-          const { token, message } = await sendOTPController({
-            identifier: user.email,
-            deliveryMethod: "email",
-          });
-          return res.status(200).json(
-            new ApiResponse(200, { token, deliveryMethod: "email" }, message || "OTP sent via Email")
-          );
-        }
-        const msg = error?.message || "Unable to send OTP via SMS";
-        throw new ApiError(503, msg);
-      }
-    }
-
-    // If no mobile number, use email when allowed
-    if (enableEmailFallback && user.email) {
+    // Default to email for now when available
+    if (canUseEmail) {
       const { token, message } = await sendOTPController({
         identifier: user.email,
         deliveryMethod: "email",
@@ -867,28 +842,55 @@ module.exports = {
       );
     }
 
-    // Otherwise, fail clearly
-    throw new ApiError(400, "No mobile number on file for this account");
+    // Fallback to SMS only when email is unavailable
+    if (canUseSms) {
+      try {
+        const { token, message } = await sendOTPController({
+          identifier: user.mobileNumber,
+          deliveryMethod: "sms",
+        });
+        return res.status(200).json(
+          new ApiResponse(200, { token, deliveryMethod: "sms" }, message || "OTP sent via SMS")
+        );
+      } catch (error) {
+        const msg = error?.message || "Unable to send OTP via SMS";
+        throw new ApiError(503, msg);
+      }
+    }
+
+    throw new ApiError(400, "No valid contact method available for OTP delivery");
   }),
 
   verifyPasswordResetOTP: asyncHandler(async (req, res) => {
-    const { token, otp } = req.body;
+    const { token, otp, deliveryMethod: providedMethod } = req.body;
     if (!token || !otp) {
       throw new ApiError(400, "Token and OTP are required");
     }
 
-    const { identifier } = await verifyOTPController({ token, otp, deliveryMethod: "sms" });
+    let deliveryMethod = providedMethod;
+    if (!deliveryMethod) {
+      const otpRecord = await OTP.findOne({ token }).select("deliveryMethod");
+      deliveryMethod = otpRecord?.deliveryMethod;
+    }
+    if (!deliveryMethod || !["sms", "email"].includes(deliveryMethod)) {
+      throw new ApiError(400, "Invalid or missing delivery method for OTP verification");
+    }
+
+    const { identifier } = await verifyOTPController({ token, otp, deliveryMethod });
     if (!identifier) {
       throw new ApiError(400, "OTP verification failed");
     }
 
-    // Find user by verified mobile number
-    const user = await User.findOne({ mobileNumber: identifier });
+    const lookupField =
+      deliveryMethod === "sms"
+        ? { mobileNumber: identifier }
+        : { email: String(identifier).toLowerCase().trim() };
+
+    const user = await User.findOne(lookupField);
     if (!user) {
-      throw new ApiError(404, "User not found for verified mobile number");
+      throw new ApiError(404, "User not found for verified identifier");
     }
 
-    // Issue short-lived reset token
     const resetToken = jwt.sign(
       { uid: user._id.toString(), purpose: "password_reset" },
       process.env.JWT_SECRET,

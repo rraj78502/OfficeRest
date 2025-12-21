@@ -22,6 +22,7 @@ const Index = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<'sms' | 'email'>('email'); // New state for delivery method
+  const [otpDeliveryMethod, setOtpDeliveryMethod] = useState<'sms' | 'email'>('sms');
 
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -47,9 +48,21 @@ const Index = () => {
     try {
       const res = await axios.post(`${API_BASE_URL}/api/v1/user/forgot-password/request`, { email });
       if (res.data?.success) {
+        const method =
+          res.data?.data?.deliveryMethod === 'email' || res.data?.data?.deliveryMethod === 'sms'
+            ? res.data.data.deliveryMethod
+            : 'sms';
         setOtpToken(res.data.data?.token || null);
+        setOtpDeliveryMethod(method);
         setCurrentPage('otp');
-        toast({ title: 'OTP Sent', description: 'An SMS OTP has been sent to your registered mobile.' });
+        toast({
+          title: 'OTP Sent',
+          description:
+            res.data?.message ||
+            (method === 'sms'
+              ? 'An OTP has been sent to your registered mobile number.'
+              : 'An OTP has been sent to your registered email address.'),
+        });
       } else {
         toast({ title: 'Request Failed', description: res.data?.message || 'Unable to send OTP', variant: 'destructive' });
       }
@@ -65,8 +78,17 @@ const Index = () => {
       setCurrentPage('forgot');
       return;
     }
+    if (!otpDeliveryMethod) {
+      toast({ title: 'Unknown OTP method', description: 'Please request a new OTP.', variant: 'destructive' });
+      setCurrentPage('forgot');
+      return;
+    }
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/v1/user/forgot-password/verify`, { token: otpToken, otp });
+      const res = await axios.post(`${API_BASE_URL}/api/v1/user/forgot-password/verify`, {
+        token: otpToken,
+        otp,
+        deliveryMethod: otpDeliveryMethod,
+      });
       if (res.data?.success) {
         setResetToken(res.data.data?.resetToken || null);
         setCurrentPage('reset');
